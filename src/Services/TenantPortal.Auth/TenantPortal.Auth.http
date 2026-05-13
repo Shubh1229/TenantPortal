@@ -1,0 +1,6 @@
+@TenantPortal.Auth_HostAddress = http://localhost:5026
+
+GET {{TenantPortal.Auth_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

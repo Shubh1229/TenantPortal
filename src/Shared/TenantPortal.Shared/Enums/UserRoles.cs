@@ -1,6 +1,6 @@
-namespace TentantPortal.Shared.Enums
+namespace TenantPortal.Shared.Enums
 {
-    public enum UserRoles
+    public enum UserRole
     {
         SuperAdmin, Admin, Tenant, Tester
     }
