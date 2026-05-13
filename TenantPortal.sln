@@ -1,0 +1,28 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.14.37216.2 d17.14
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{02EA681E-C7D8-13C7-8484-4AC65E1B71E8}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{1695D011-AD6A-495B-B590-956C6C075D01}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Gateway", "Gateway", "{F1A6C247-D80B-40AB-945D-DEAD7D1ED905}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Services", "Services", "{1A003046-9853-4C2F-B158-924EB42DE072}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Shared", "Shared", "{9CF698C1-8BB0-41CD-B266-7C813525E6B3}"
+EndProject
+Global
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{F1A6C247-D80B-40AB-945D-DEAD7D1ED905} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
+		{1A003046-9853-4C2F-B158-924EB42DE072} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
+		{9CF698C1-8BB0-41CD-B266-7C813525E6B3} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {21B584DC-473E-4030-AE52-18D3B5B5A5E9}
+	EndGlobalSection
+EndGlobal
