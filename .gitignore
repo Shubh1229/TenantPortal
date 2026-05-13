@@ -13,6 +13,10 @@
 # User-specific files (MonoDevelop/Xamarin Studio)
 *.userprefs
 
+**/secrets/
+**/.secrets
+**/*.secret
+
 # Mono auto generated files
 mono_crash.*
 
@@ -361,3 +365,4 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+/TenantPortal.sln
