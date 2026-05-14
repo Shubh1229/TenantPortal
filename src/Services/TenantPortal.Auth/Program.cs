@@ -1,11 +1,13 @@
-using TenantPortal.Shared.Constants;
-using TenantPortal.Shared.Enums;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Serilog;
 using System.Text;
 using TenantPortal.Auth.Data;
-using Microsoft.EntityFrameworkCore;
+using TenantPortal.Auth.Services;
+using TenantPortal.Shared.Constants;
+using TenantPortal.Shared.Enums;
+using TenantPortal.Shared.Interfaces;
 
 
 var builder = WebApplication.CreateBuilder(args);
@@ -52,6 +54,11 @@ builder.Services.AddAuthorization(options =>
 
 builder.Services.AddDbContext<AuthDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("Postgres")));
+
+builder.Services.AddScoped<IJwtService, JwtService>();
+builder.Services.AddScoped<ITotpService, TotpService>();
+builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<ISecretsProvider, LocalSecretsProvider>();
 
 builder.Services.AddOpenApi();
 

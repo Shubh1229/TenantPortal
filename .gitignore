@@ -16,9 +16,12 @@
 **/secrets/
 **/.secrets
 **/*.secret
+**/secrets.json
 
 .claude
 .github
+
+Media
 # Mono auto generated files
 mono_crash.*
 

@@ -20,7 +20,7 @@ namespace TenantPortal.Auth.Services
 
         public string CreateAccessToken(User user) 
         {
-            string? jwtSecretKey = _secretsProvider.GetSecretAsync("JWT_SECRET_KEY").GetAwaiter().GetResult();
+            string? jwtSecretKey = _secretsProvider.GetSecretAsync(SecretKeys.JwtSigningKey).GetAwaiter().GetResult();
             if (jwtSecretKey == null)
             {
                 throw new NotFoundException("JWT Secret Key not found");

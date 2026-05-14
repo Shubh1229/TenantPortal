@@ -6,6 +6,7 @@ using TenantPortal.Auth.DTOs;
 using TenantPortal.Auth.Models;
 using TenantPortal.Shared.Interfaces;
 using System.Security.Cryptography;
+using TenantPortal.Shared.Enums;
 
 namespace TenantPortal.Auth.Services
 {
@@ -95,19 +96,53 @@ namespace TenantPortal.Auth.Services
             };
         }
 
-        public async Task RevokeRefreshTokenAsync(string refreshToken)
+        public Task RevokeRefreshTokenAsync(string refreshToken)
         {
             Guid? userId = _jwtService.ValidateRefreshToken(refreshToken);
-            if (userId == null)
+            if (userId != null)
             {
-                return;
+                foreach (string key in _tempTokenStore.Keys)
+                {
+                    Guid value = _tempTokenStore[key];
+                    if (value == userId)
+                    {
+                        _tempTokenStore.Remove(key);
+                        break;
+                    }
+                }
             }
-
+            return Task.CompletedTask;
         }
 
-        public async Task<bool> SendInviteAsync(InviteRequestDTO request)
+        public async Task<bool> SendInviteAsync(InviteRequestDTO request, Guid createdBy)
         {
-            throw new NotImplementedException();
+            var invitedUser = await _context.Users.FirstOrDefaultAsync(u => u.Email == request.Email);
+            if (invitedUser != null)
+            {
+                return false;
+            }
+            var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == createdBy);
+            if (user == null || user.Role == UserRole.Tenant)
+            {
+                return false;
+            }
+
+            var inviteToken = _jwtService.GenerateRefreshToken();
+            var inviteTokenHash = Convert.ToBase64String(SHA256.HashData(Encoding.UTF8.GetBytes(inviteToken)));
+            var inviteRecord = new InviteToken
+            {
+                Id = Guid.NewGuid(),
+                Email = request.Email,
+                Role = request.Role,
+                TokenHash = inviteTokenHash,
+                ExpiresAt = DateTime.UtcNow.AddDays(2),
+                Used = false,
+                CreatedBy = createdBy,
+                CreatedAt = DateTime.UtcNow
+            };
+            await _context.InviteTokens.AddAsync(inviteRecord);
+            await _context.SaveChangesAsync();
+            return true;
         }
 
         public async Task<LoginResponseDTO?> ValidateTotpAsync(string tempToken, string totpCode)
