@@ -6,12 +6,13 @@ namespace TenantPortal.Shared.Helpers
 {
     /// <summary>
     /// <see cref="ISecretsProvider"/> implementation for local development.
-    /// Reads secrets from a <c>secrets.json</c> file in the working directory.
+    /// Reads secrets from a <c>.secrets/secrets.json</c> file located by walking
+    /// up the directory tree from the current working directory to the solution root.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <c>secrets.json</c> must be present in the project root when running locally
-    /// and must be listed in <c>.gitignore</c> — never commit it to source control.
+    /// <c>.secrets/secrets.json</c> must exist at the solution root and must be
+    /// listed in <c>.gitignore</c> — never commit it to source control.
     /// </para>
     /// <para>Expected format:</para>
     /// <code>
@@ -25,10 +26,28 @@ namespace TenantPortal.Shared.Helpers
     /// </remarks>
     public class LocalSecretsProvider : ISecretsProvider
     {
+        private static readonly string SecretsPath = FindSecretsFile();
+
+        private static string FindSecretsFile()
+        {
+            var directory = Directory.GetCurrentDirectory();
+            while (true)
+            {
+                var candidate = Path.Combine(directory, ".secrets", "secrets.json");
+                if (File.Exists(candidate))
+                    return candidate;
+                var parent = Directory.GetParent(directory);
+                if (parent == null)
+                    throw new FileNotFoundException(
+                        "Could not locate .secrets/secrets.json — ensure it exists at the solution root.");
+                directory = parent.FullName;
+            }
+        }
+
         /// <inheritdoc/>
         public async Task<string> GetSecretAsync(string secretName)
         {
-            var json = await File.ReadAllTextAsync("secrets.json");
+            var json = await File.ReadAllTextAsync(SecretsPath);
             var secrets = JsonSerializer.Deserialize<Dictionary<string, string>>(json);
             if (secrets == null || !secrets.TryGetValue(secretName, out var value))
                 throw new NotFoundException($"Secret '{secretName}' not found in secrets.json");

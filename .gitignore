@@ -20,6 +20,11 @@
 
 .claude
 .github
+.secret
+.secret/
+.secret/*
+.secret/**
+
 
 Media
 # Mono auto generated files

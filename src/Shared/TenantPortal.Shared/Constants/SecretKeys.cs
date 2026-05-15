@@ -18,5 +18,7 @@ namespace TenantPortal.Shared.Constants
 
         /// <summary>Azure Communication Services connection string used to send transactional emails.</summary>
         public const string AzureCommunicationServices = "AzureCommunicationServices__ConnectionString";
+        public const string SuperAdminEmail = "SuperAdmin__Email";
+        public const string SuperAdminPassword = "SuperAdmin__Password";
     }
 }
