@@ -8,5 +8,6 @@
         public const string StripeWebhookSecret = "Stripe__WebhookSecret";
         public const string TotpEncryptionKey = "Totp__EncryptionKey";
         public const string AzureBlobStorageConnection = "AzureBlobStorage__ConnectionString";
+        public const string AzureCommunicationServices = "AzureCommunicationServices__ConnectionString";
     }
 }

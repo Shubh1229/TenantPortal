@@ -11,12 +11,10 @@ namespace TenantPortal.Contracts.Services
 {
     public class ContractService : IContractService
     {
-        private readonly ISecretsProvider _secretsProvider;
         private readonly ContractDbContext _context;
         private readonly BlobServiceClient _blobClient;
-        public ContractService(ISecretsProvider secretsProvider, ContractDbContext context, BlobServiceClient blobClient)
+        public ContractService(ContractDbContext context, BlobServiceClient blobClient)
         {
-            _secretsProvider = secretsProvider;
             _context = context;
             _blobClient = blobClient;
         }
