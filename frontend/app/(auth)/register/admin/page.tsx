@@ -1,16 +1,19 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, Suspense } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { authApi } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Building2, Check } from 'lucide-react';
+import { Building2, Check, AlertTriangle } from 'lucide-react';
 
-type Step = 'form' | 'totp-setup' | 'checkout';
+type Step = 'form' | 'totp-setup';
 
-export default function AdminRegisterPage() {
+function AdminRegisterForm() {
+    const searchParams = useSearchParams();
+    const wasCanceled = searchParams.get('canceled') === 'true';
     const [step, setStep] = useState<Step>('form');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -97,6 +100,12 @@ export default function AdminRegisterPage() {
                 <div className="w-full max-w-sm space-y-8">
                     {step === 'form' && (
                         <>
+                            {wasCanceled && (
+                                <div className="flex items-start gap-2.5 rounded-lg bg-yellow-500/10 border border-yellow-500/20 px-4 py-3 text-sm text-yellow-300">
+                                    <AlertTriangle size={15} className="mt-0.5 shrink-0" />
+                                    Billing was not completed. Your account details are saved — click &ldquo;Continue to billing&rdquo; when ready.
+                                </div>
+                            )}
                             <div>
                                 <h1 className="text-2xl font-semibold text-white">Create admin account</h1>
                                 <p className="mt-1 text-sm text-zinc-400">
@@ -194,5 +203,13 @@ export default function AdminRegisterPage() {
                 </div>
             </div>
         </div>
+    );
+}
+
+export default function AdminRegisterPage() {
+    return (
+        <Suspense fallback={<div className="min-h-screen bg-zinc-950" />}>
+            <AdminRegisterForm />
+        </Suspense>
     );
 }
