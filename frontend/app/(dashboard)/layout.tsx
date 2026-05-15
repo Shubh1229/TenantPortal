@@ -20,8 +20,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     if (!accessToken) return null;
 
     return (
-        <div className="min-h-screen bg-slate-50">
-            <nav className="bg-white border-b px-6 py-4 flex items-center justify-between">
+        <div className="min-h-screen bg-black text-white">
+            <nav className="bg-zinc-900 border-b border-zinc-800 px-6 py-4 flex items-center justify-between">
                 <div className="flex items-center gap-6">
                     <h1 className="font-semibold text-lg">Tenant Portal</h1>
                     <Separator orientation="vertical" className="h-6" />
