@@ -1,13 +1,18 @@
 import { apiRequest } from './client';
 import { LoginRequest, LoginResponse, TotpValidationRequest } from '@/types';
 
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+
 export const authApi = {
-    login: (data: LoginRequest) =>
-        apiRequest<string>('/api/auth/login', {
+    login: async (data: LoginRequest): Promise<string> => {
+        const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
             method: 'POST',
-            body: data,
-            requiresAuth: false,
-        }),
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data),
+        });
+        if (!response.ok) throw new Error('Login failed');
+        return response.text();
+    },
 
     validateTotp: (data: TotpValidationRequest) =>
         apiRequest<LoginResponse>('/api/auth/login/totp', {
