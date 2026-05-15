@@ -11,7 +11,6 @@ using TenantPortal.Shared.Enums;
 using TenantPortal.Shared.Helpers;
 using TenantPortal.Shared.Interfaces;
 
-
 var builder = WebApplication.CreateBuilder(args);
 
 Log.Logger = new LoggerConfiguration()
@@ -20,16 +19,22 @@ Log.Logger = new LoggerConfiguration()
 
 builder.Services.AddSerilog();
 
+// Load the JWT signing key at startup so the key used to sign tokens matches
+// the key used to validate them in all downstream services.
+var startupSecrets = new LocalSecretsProvider();
+var jwtSigningKey = startupSecrets.GetSecretAsync(SecretKeys.JwtSigningKey).GetAwaiter().GetResult();
+
 builder.Services.AddAuthentication(options =>
 {
     options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
     options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
-}).AddJwtBearer(options =>
+})
+.AddJwtBearer(options =>
 {
     options.TokenValidationParameters = new TokenValidationParameters
     {
         ValidateIssuerSigningKey = true,
-        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes("PlaceHolder")),
+        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSigningKey)),
         ValidateIssuer = false,
         ValidateAudience = false,
         ValidateLifetime = true,
@@ -39,7 +44,7 @@ builder.Services.AddAuthentication(options =>
 
 builder.Services.AddAuthorization(options =>
 {
-    options.AddPolicy(AppConstants.Policies.RequireSuperAdmin, policy => 
+    options.AddPolicy(AppConstants.Policies.RequireSuperAdmin, policy =>
         policy.RequireClaim(AppConstants.Claims.UserRole, UserRole.SuperAdmin.ToString()));
 
     options.AddPolicy(AppConstants.Policies.RequireAdmin, policy =>
@@ -62,6 +67,7 @@ builder.Services.AddScoped<ITotpService, TotpService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<ISecretsProvider, LocalSecretsProvider>();
 
+builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 
 var app = builder.Build();
@@ -69,6 +75,6 @@ var app = builder.Build();
 app.UseHttpsRedirection();
 app.UseAuthentication();
 app.UseAuthorization();
+app.MapControllers();
 
 app.Run();
-

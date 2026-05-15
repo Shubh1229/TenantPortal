@@ -1,174 +1,204 @@
-﻿using BCrypt.Net;
+using BCrypt.Net;
 using Microsoft.EntityFrameworkCore;
+using System.Collections.Concurrent;
+using System.Security.Cryptography;
 using System.Text;
 using TenantPortal.Auth.Data;
 using TenantPortal.Auth.DTOs;
-using TenantPortal.Auth.Models;
-using TenantPortal.Shared.Interfaces;
-using System.Security.Cryptography;
-using TenantPortal.Shared.Enums;
 using TenantPortal.Auth.Interfaces;
+using TenantPortal.Auth.Models;
+using TenantPortal.Shared.Enums;
+using TenantPortal.Shared.Interfaces;
 
 namespace TenantPortal.Auth.Services
 {
+    /// <inheritdoc cref="IAuthService"/>
     public class AuthService : IAuthService
     {
         private readonly IJwtService _jwtService;
         private readonly ITotpService _totpService;
         private readonly AuthDbContext _context;
         private readonly ISecretsProvider _secretsProvider;
-        private static readonly Dictionary<string, Guid> _tempTokenStore = new();
 
-        public AuthService(IJwtService jwtService, ITotpService totpService, AuthDbContext context, ISecretsProvider secretsProvider)
+        // Holds temp tokens issued after password validation, pending TOTP verification.
+        // Static + ConcurrentDictionary so multiple concurrent login attempts don't race.
+        // Tokens are single-use: removed from the store the moment TOTP is validated.
+        private static readonly ConcurrentDictionary<string, Guid> _tempTokenStore = new();
+
+        public AuthService(
+            IJwtService jwtService,
+            ITotpService totpService,
+            AuthDbContext context,
+            ISecretsProvider secretsProvider)
         {
             _jwtService = jwtService;
             _totpService = totpService;
             _context = context;
             _secretsProvider = secretsProvider;
         }
+
+        /// <inheritdoc/>
         public async Task<string?> LoginAsync(string email, string password)
         {
-            User? user = await _context.Users.FirstOrDefaultAsync(u => u.Email == email);
-            if (user == null)
-            {
-                return null;
-            }
-            bool passwordMatch = BCrypt.Net.BCrypt.Verify(password, user.PasswordHash);
-            if (!passwordMatch)
-            {
-                return null;
-            }
+            var user = await _context.Users
+                .FirstOrDefaultAsync(u => u.Email == email && u.IsActive && !u.IsDeleted);
 
+            if (user == null || !BCrypt.Net.BCrypt.Verify(password, user.PasswordHash))
+                return null;
+
+            // Issue a short-lived opaque temp token that ties this step to the next (TOTP).
             var tempToken = _jwtService.GenerateRefreshToken();
             _tempTokenStore[tempToken] = user.Id;
             return tempToken;
         }
 
-        public async Task<LoginResponseDTO?> RefreshTokenAsync(string refreshToken)
+        /// <inheritdoc/>
+        public async Task<LoginResponseDTO?> ValidateTotpAsync(string tempToken, string totpCode)
         {
-            Guid? userId = _jwtService.ValidateRefreshToken(refreshToken);
-            if (userId == null)
-            {
+            // TryRemove is atomic — prevents the same temp token being used twice
+            if (!_tempTokenStore.TryRemove(tempToken, out var userId))
                 return null;
-            }
-            var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == userId);
-            if (user == null || !user.IsActive)
-            {
+
+            var user = await _context.Users
+                .FirstOrDefaultAsync(u => u.Id == userId && u.IsActive && !u.IsDeleted);
+
+            if (user == null || !_totpService.ValidateTotpToken(user.TotpSecret, totpCode))
                 return null;
-            }
+
+            var refreshToken = _jwtService.GenerateRefreshToken();
+
+            // Store the hash, never the plain-text token
+            user.RefreshTokenHash = HashToken(refreshToken);
+            user.RefreshTokenExpiresAt = DateTime.UtcNow.AddDays(7);
+            user.UpdatedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
 
             return new LoginResponseDTO
             {
                 AccessToken = _jwtService.CreateAccessToken(user),
-                RefreshToken = _jwtService.GenerateRefreshToken()
+                RefreshToken = refreshToken
             };
         }
 
+        /// <inheritdoc/>
+        public async Task<LoginResponseDTO?> RefreshTokenAsync(string refreshToken)
+        {
+            var hash = HashToken(refreshToken);
+
+            var user = await _context.Users.FirstOrDefaultAsync(u =>
+                u.RefreshTokenHash == hash &&
+                u.RefreshTokenExpiresAt > DateTime.UtcNow &&
+                u.IsActive &&
+                !u.IsDeleted);
+
+            if (user == null)
+                return null;
+
+            // Rotate: replace the stored hash with a new token's hash on every use
+            var newRefreshToken = _jwtService.GenerateRefreshToken();
+            user.RefreshTokenHash = HashToken(newRefreshToken);
+            user.RefreshTokenExpiresAt = DateTime.UtcNow.AddDays(7);
+            user.UpdatedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+
+            return new LoginResponseDTO
+            {
+                AccessToken = _jwtService.CreateAccessToken(user),
+                RefreshToken = newRefreshToken
+            };
+        }
+
+        /// <inheritdoc/>
+        public async Task RevokeRefreshTokenAsync(string refreshToken)
+        {
+            var hash = HashToken(refreshToken);
+            var user = await _context.Users.FirstOrDefaultAsync(u => u.RefreshTokenHash == hash);
+            if (user == null)
+                return;
+
+            user.RefreshTokenHash = null;
+            user.RefreshTokenExpiresAt = null;
+            user.UpdatedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+        }
+
+        /// <inheritdoc/>
         public async Task<TotpSetupResponseDTO?> RegisterAsync(RegisterRequestDTO request)
         {
-            var inviteToken = request.InviteToken;
-            var inviteTokenHash = Convert.ToBase64String(SHA256.HashData(Encoding.UTF8.GetBytes(inviteToken)));
-            var inviteRecord = await _context.InviteTokens.FirstOrDefaultAsync(t => t.TokenHash == inviteTokenHash);
+            var inviteTokenHash = HashToken(request.InviteToken);
+            var inviteRecord = await _context.InviteTokens
+                .FirstOrDefaultAsync(t => t.TokenHash == inviteTokenHash);
+
             if (inviteRecord == null || inviteRecord.Used || inviteRecord.ExpiresAt < DateTime.UtcNow)
-            {
                 return null;
-            }
-            User? user = await _context.Users.FirstOrDefaultAsync(u => u.Email == inviteRecord.Email);
-            if (user != null)
-            {
+
+            // Prevent duplicate accounts for the same email
+            if (await _context.Users.AnyAsync(u => u.Email == inviteRecord.Email))
                 return null;
-            }
-            var passwordHash = BCrypt.Net.BCrypt.HashPassword(request.Password);
-            var newTotpSecret = _totpService.GenerateSecret();
+
+            var totpSecret = _totpService.GenerateSecret();
+
             await _context.Users.AddAsync(new User
             {
                 Id = Guid.NewGuid(),
                 Role = inviteRecord.Role,
                 Email = inviteRecord.Email,
-                PasswordHash = passwordHash,
-                TotpSecret = newTotpSecret
+                PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password),
+                TotpSecret = totpSecret,
+                IsActive = true,
+                IsDeleted = false,
+                InvitedBy = inviteRecord.CreatedBy,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
             });
+
             inviteRecord.Used = true;
             await _context.SaveChangesAsync();
+
             return new TotpSetupResponseDTO
             {
-                ManualEntryKey = newTotpSecret,
-                QrCode = _totpService.GenerateQrCode(newTotpSecret, inviteRecord.Email)
+                ManualEntryKey = totpSecret,
+                QrCode = _totpService.GenerateQrCode(totpSecret, inviteRecord.Email)
             };
         }
 
-        public Task RevokeRefreshTokenAsync(string refreshToken)
-        {
-            Guid? userId = _jwtService.ValidateRefreshToken(refreshToken);
-            if (userId != null)
-            {
-                foreach (string key in _tempTokenStore.Keys)
-                {
-                    Guid value = _tempTokenStore[key];
-                    if (value == userId)
-                    {
-                        _tempTokenStore.Remove(key);
-                        break;
-                    }
-                }
-            }
-            return Task.CompletedTask;
-        }
-
+        /// <inheritdoc/>
         public async Task<bool> SendInviteAsync(InviteRequestDTO request, Guid createdBy)
         {
-            var invitedUser = await _context.Users.FirstOrDefaultAsync(u => u.Email == request.Email);
-            if (invitedUser != null)
-            {
+            // Reject if the email already belongs to a registered user
+            if (await _context.Users.AnyAsync(u => u.Email == request.Email && !u.IsDeleted))
                 return false;
-            }
-            var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == createdBy);
-            if (user == null || user.Role == UserRole.Tenant)
-            {
-                return false;
-            }
 
-            var inviteToken = _jwtService.GenerateRefreshToken();
-            var inviteTokenHash = Convert.ToBase64String(SHA256.HashData(Encoding.UTF8.GetBytes(inviteToken)));
-            var inviteRecord = new InviteToken
+            var creator = await _context.Users.FirstOrDefaultAsync(u => u.Id == createdBy && !u.IsDeleted);
+            if (creator == null || creator.Role == UserRole.Tenant)
+                return false;
+
+            var plainToken = _jwtService.GenerateRefreshToken();
+            await _context.InviteTokens.AddAsync(new InviteToken
             {
                 Id = Guid.NewGuid(),
                 Email = request.Email,
                 Role = request.Role,
-                TokenHash = inviteTokenHash,
+                TokenHash = HashToken(plainToken),
                 ExpiresAt = DateTime.UtcNow.AddDays(2),
                 Used = false,
                 CreatedBy = createdBy,
                 CreatedAt = DateTime.UtcNow
-            };
-            await _context.InviteTokens.AddAsync(inviteRecord);
+            });
+
             await _context.SaveChangesAsync();
+
+            // TODO: deliver plainToken to the invitee via the Notification service.
+            // The registration link should be: https://<domain>/register?token=<plainToken>
+            // Wire up NotificationService.SendEmailAsync once inter-service communication is established.
             return true;
         }
 
-        public async Task<LoginResponseDTO?> ValidateTotpAsync(string tempToken, string totpCode)
-        {
-            if(!_tempTokenStore.TryGetValue(tempToken, out var userID))
-            {
-                return null;
-            }
-            User? user = await _context.Users.FirstOrDefaultAsync(u => u.Id == userID);
-            if (user == null)
-            {
-                return null;
-            }
-            var totpValid = _totpService.ValidateTotpToken(user.TotpSecret, totpCode);
-            if (!totpValid)
-            {
-                return null;
-            }
-            _tempTokenStore.Remove(tempToken);
-            LoginResponseDTO response = new LoginResponseDTO
-            {
-                AccessToken = _jwtService.CreateAccessToken(user),
-                RefreshToken = _jwtService.GenerateRefreshToken()
-            };
-            return response;
-        }
+        /// <summary>
+        /// SHA-256 hashes a token for safe storage and constant-time comparison.
+        /// All token comparisons go through this method — never compare raw token strings.
+        /// </summary>
+        private static string HashToken(string token) =>
+            Convert.ToBase64String(SHA256.HashData(Encoding.UTF8.GetBytes(token)));
     }
 }

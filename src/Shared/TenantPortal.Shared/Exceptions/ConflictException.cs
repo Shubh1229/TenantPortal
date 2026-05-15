@@ -1,16 +1,15 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
 namespace TenantPortal.Shared.Exceptions
 {
+    /// <summary>
+    /// Thrown when a create or update operation would violate a uniqueness constraint.
+    /// Typically maps to an HTTP 409 response.
+    /// </summary>
     public class ConflictException : Exception
     {
-        public ConflictException() : base("Conflict occurred, item already exists") { }
-        public ConflictException(string message) : base(message)
-        {
-        }
+        /// <summary>Initialises the exception with a default message.</summary>
+        public ConflictException() : base("A conflict occurred — the item already exists.") { }
+
+        /// <summary>Initialises the exception with a specific message.</summary>
+        public ConflictException(string message) : base(message) { }
     }
 }

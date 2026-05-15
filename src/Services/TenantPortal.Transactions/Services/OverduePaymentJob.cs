@@ -1,9 +1,14 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using TenantPortal.Shared.Enums;
 using TenantPortal.Transactions.Data;
 
 namespace TenantPortal.Transactions.Services
 {
+    /// <summary>
+    /// Background service that runs once per day at midnight UTC.
+    /// Scans all non-deleted transactions with a past due date and no confirmed or pending payment,
+    /// then transitions them to <see cref="TransactionStatus.Overdue"/>.
+    /// </summary>
     public class OverduePaymentJob : BackgroundService
     {
         private readonly IServiceScopeFactory _scopeFactory;
@@ -12,13 +17,15 @@ namespace TenantPortal.Transactions.Services
         {
             _scopeFactory = scopeFactory;
         }
+
+        /// <inheritdoc/>
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             while (!stoppingToken.IsCancellationRequested)
             {
+                // Sleep until the next midnight UTC, then run the overdue check
                 var now = DateTime.UtcNow;
-                var nextMidnight = now.Date.AddDays(1);
-                var delay = nextMidnight - now;
+                var delay = now.Date.AddDays(1) - now;
                 await Task.Delay(delay, stoppingToken);
                 await RunOverdueCheckAsync();
             }
@@ -26,6 +33,7 @@ namespace TenantPortal.Transactions.Services
 
         private async Task RunOverdueCheckAsync()
         {
+            // Use a scope because DbContext is scoped and BackgroundService is singleton
             using var scope = _scopeFactory.CreateScope();
             var context = scope.ServiceProvider.GetRequiredService<TransactionDbContext>();
 
@@ -36,7 +44,8 @@ namespace TenantPortal.Transactions.Services
                     && t.Status != TransactionStatus.Pending
                     && t.Status != TransactionStatus.Overdue)
                 .ToListAsync();
-            foreach ( var transaction in overdueTransactions )
+
+            foreach (var transaction in overdueTransactions)
             {
                 transaction.Status = TransactionStatus.Overdue;
                 transaction.UpdatedAt = DateTime.UtcNow;
