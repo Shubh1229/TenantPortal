@@ -1,0 +1,6 @@
+@TenantPortal.Gateway_HostAddress = http://localhost:5183
+
+GET {{TenantPortal.Gateway_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
