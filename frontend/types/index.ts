@@ -13,7 +13,9 @@ export type TransactionType =
   | 'Refund'
   | 'Other';
 
-export type PaymentMethod = 'Stripe' | 'External' | 'Manual';
+export type PaymentMethod = 'Stripe' | 'Ach' | 'External' | 'Manual';
+
+export type SubscriptionStatusValue = 'None' | 'Trialing' | 'Active' | 'PastDue' | 'Canceled';
 
 export type NotificationType =
   | 'PaymentConfirmed'
@@ -96,6 +98,21 @@ export interface ReminderSetting {
 
 export interface NotificationPreference {
   emailEnabled: boolean;
+}
+
+export interface SubscriptionStatusResponse {
+  status: SubscriptionStatusValue;
+  isActive: boolean;
+  maxTenants: number | null;
+  currentTenantCount: number;
+}
+
+export interface AdminRegisterResponse {
+  checkoutUrl: string;
+  totpSetup: {
+    manualEntryKey: string;
+    qrCode: string;
+  };
 }
 
 export interface ApiError {

@@ -1,5 +1,5 @@
 import { apiRequest } from './client';
-import { LoginRequest, LoginResponse, TotpValidationRequest } from '@/types';
+import { AdminRegisterResponse, LoginRequest, LoginResponse, TotpValidationRequest } from '@/types';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
@@ -31,5 +31,24 @@ export const authApi = {
         apiRequest<void>('/api/auth/invite', {
             method: 'POST',
             body: { email, role },
+        }),
+
+    registerAdmin: (email: string, password: string, returnBaseUrl: string) =>
+        apiRequest<AdminRegisterResponse>('/api/auth/register/admin', {
+            method: 'POST',
+            body: { email, password, returnBaseUrl },
+            requiresAuth: false,
+        }),
+
+    getSubscriptionStatus: () =>
+        apiRequest<{ status: string; isActive: boolean; maxTenants: number | null; currentTenantCount: number }>(
+            '/api/auth/subscription/status',
+            { method: 'GET' }
+        ),
+
+    getBillingPortalUrl: (returnUrl: string) =>
+        apiRequest<{ url: string }>('/api/auth/subscription/portal', {
+            method: 'POST',
+            body: { returnUrl },
         }),
 };

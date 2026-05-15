@@ -8,6 +8,7 @@
 
   <ItemGroup>
     <PackageReference Include="Azure.Communication.Email" Version="1.1.0" />
+    <PackageReference Include="Grpc.AspNetCore" Version="2.67.0" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="9.0.16" />
 	  <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="9.0.16" />
 	  <PackageReference Include="Microsoft.EntityFrameworkCore" Version="9.0.16" />
@@ -23,6 +24,10 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\Shared\TenantPortal.Shared\TenantPortal.Shared.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Protobuf Include="..\..\protos\notifications.proto" GrpcServices="Server" />
   </ItemGroup>
 
 </Project>

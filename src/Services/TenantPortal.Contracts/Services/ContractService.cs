@@ -41,23 +41,25 @@ namespace TenantPortal.Contracts.Services
 
         public async Task<ContractDownloadResponseDTO?> DownloadContractAsync(Guid contractId, Guid userId, UserRole role)
         {
-            Contract? contract = null;
+            Contract? contract;
             if (role == UserRole.Tenant)
-            {
                 contract = await _context.Contracts.FirstOrDefaultAsync(c => c.Id == contractId && c.TenantId == userId && !c.IsDeleted);
-            }
+            else if (role == UserRole.Admin)
+                contract = await _context.Contracts.FirstOrDefaultAsync(c => c.Id == contractId && c.UploadedBy == userId && !c.IsDeleted);
             else
-            {
                 contract = await _context.Contracts.FirstOrDefaultAsync(c => c.Id == contractId && !c.IsDeleted);
-            }
+
             if (contract == null) return null;
-            var response = new ContractDownloadResponseDTO
+
+            var expiresAt = DateTimeOffset.UtcNow.AddMinutes(15);
+            var downloadUrl = GenerateSasUrl(contract.BlobStoragePath, expiresAt);
+
+            return new ContractDownloadResponseDTO
             {
                 FileName = contract.FileName,
-                DownloadUrl = "TEST",
-                ExpiresAt = DateTime.UtcNow.AddMinutes(15)
+                DownloadUrl = downloadUrl,
+                ExpiresAt = expiresAt.UtcDateTime
             };
-            return response;
         }
 
         public async Task<List<ContractResponseDTO>> GetAllContractsAsync(Guid userId, UserRole role)
@@ -144,17 +146,38 @@ namespace TenantPortal.Contracts.Services
             }
         }
 
-        private ContractResponseDTO MapToDTO(Contract contract)
+        private ContractResponseDTO MapToDTO(Contract contract) => new ContractResponseDTO
         {
-            return new ContractResponseDTO
+            Id = contract.Id,
+            TenantId = contract.TenantId,
+            FileName = contract.FileName,
+            IsCurrent = contract.IsCurrent,
+            UploadedAt = contract.UploadedAt,
+            // Listing URLs use a longer expiry (1 h) so the page remains usable without re-fetching.
+            // Actual download URLs (15 min) are issued by DownloadContractAsync.
+            DownloadUrl = GenerateSasUrl(contract.BlobStoragePath, DateTimeOffset.UtcNow.AddHours(1))
+        };
+
+        /// <summary>
+        /// Generates a time-limited Azure Blob SAS read URL.
+        /// Falls back to an empty string when the BlobServiceClient lacks shared-key credentials
+        /// (e.g. managed identity without user-delegation key setup).
+        /// </summary>
+        private string GenerateSasUrl(string blobPath, DateTimeOffset expiresOn)
+        {
+            try
             {
-                Id = contract.Id,
-                TenantId = contract.TenantId,
-                FileName = contract.FileName,
-                IsCurrent = contract.IsCurrent,
-                UploadedAt = contract.UploadedAt,
-                DownloadUrl = "TEST" //_blobClient.GetBlobContainerClient("contracts").GetBlobClient(contract.BlobStoragePath).GenerateSasUri(Azure.Storage.Sas.BlobSasPermissions.Read, DateTimeOffset.UtcNow.AddHours(1)).ToString()
-            };
+                var blobClient = _blobClient
+                    .GetBlobContainerClient("contracts")
+                    .GetBlobClient(blobPath);
+                return blobClient.GenerateSasUri(
+                    Azure.Storage.Sas.BlobSasPermissions.Read,
+                    expiresOn).ToString();
+            }
+            catch
+            {
+                return string.Empty;
+            }
         }
     }
 }

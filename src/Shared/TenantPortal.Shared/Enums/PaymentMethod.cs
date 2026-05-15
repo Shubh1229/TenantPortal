@@ -12,6 +12,9 @@ namespace TenantPortal.Shared.Enums
         External,
 
         /// <summary>Recorded manually by an Admin or Super Admin (e.g. historical backfill).</summary>
-        Manual
+        Manual,
+
+        /// <summary>ACH Direct Debit via Stripe (us_bank_account). Cheaper than card: 0.8% capped at $5.00.</summary>
+        Ach
     }
 }

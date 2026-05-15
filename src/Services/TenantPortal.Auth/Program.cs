@@ -68,6 +68,11 @@ builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<ISubscriptionService, SubscriptionService>();
 builder.Services.AddScoped<ISecretsProvider, LocalSecretsProvider>();
 
+// Singleton: one gRPC channel shared across all requests (channels are thread-safe and expensive to create).
+var notificationsGrpcUrl = builder.Configuration["Notifications:GrpcUrl"] ?? "http://localhost:5004";
+builder.Services.AddSingleton<INotificationsGrpcClient>(
+    new NotificationsGrpcClient(notificationsGrpcUrl));
+
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 
