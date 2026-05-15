@@ -62,6 +62,8 @@ builder.Services.AddScoped<ITransactionService, TransactionService>();
 builder.Services.AddScoped<IRentScheduleService, RentScheduleService>();
 builder.Services.AddScoped<IStripeService, StripeService>();
 builder.Services.AddScoped<ISecretsProvider, LocalSecretsProvider>();
+builder.Services.AddHostedService<OverduePaymentJob>();
+
 
 builder.Services.AddControllers();
 

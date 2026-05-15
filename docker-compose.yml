@@ -1,0 +1,77 @@
+version: '3.9'
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: tenantportal-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: yourpassword
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  gateway:
+    build:
+      context: .
+      dockerfile: src/Gateway/TenantPortal.Gateway/Dockerfile
+    container_name: tenantportal-gateway
+    ports:
+      - "5000:8080"
+    depends_on:
+      - auth
+      - transactions
+      - contracts
+      - notifications
+
+  auth:
+    build:
+      context: .
+      dockerfile: src/Services/TenantPortal.Auth/Dockerfile
+    container_name: tenantportal-auth
+    ports:
+      - "5001:8080"
+    depends_on:
+      - postgres
+    environment:
+      - ConnectionStrings__Postgres=Host=postgres;Database=tenantportal_auth;Username=postgres;Password=yourpassword
+
+  transactions:
+    build:
+      context: .
+      dockerfile: src/Services/TenantPortal.Transactions/Dockerfile
+    container_name: tenantportal-transactions
+    ports:
+      - "5002:8080"
+    depends_on:
+      - postgres
+    environment:
+      - ConnectionStrings__Postgres=Host=postgres;Database=tenantportal_transactions;Username=postgres;Password=yourpassword
+
+  contracts:
+    build:
+      context: .
+      dockerfile: src/Services/TenantPortal.Contracts/Dockerfile
+    container_name: tenantportal-contracts
+    ports:
+      - "5003:8080"
+    depends_on:
+      - postgres
+    environment:
+      - ConnectionStrings__Postgres=Host=postgres;Database=tenantportal_contracts;Username=postgres;Password=yourpassword
+
+  notifications:
+    build:
+      context: .
+      dockerfile: src/Services/TenantPortal.Notifications/Dockerfile
+    container_name: tenantportal-notifications
+    ports:
+      - "5004:8080"
+    depends_on:
+      - postgres
+    environment:
+      - ConnectionStrings__Postgres=Host=postgres;Database=tenantportal_notifications;Username=postgres;Password=yourpassword
+
+volumes:
+  postgres-data:
