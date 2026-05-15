@@ -7,6 +7,7 @@ using System.Text;
 using Microsoft.IdentityModel.Tokens;
 using TenantPortal.Shared.Constants;
 using TenantPortal.Shared.Exceptions;
+using TenantPortal.Auth.Interfaces;
 
 namespace TenantPortal.Auth.Services
 {
@@ -73,7 +74,7 @@ namespace TenantPortal.Auth.Services
                     return null;
                 }
                 return result;
-            } catch (Exception ex)
+            } catch (Exception)
             {
                 return null;
             }

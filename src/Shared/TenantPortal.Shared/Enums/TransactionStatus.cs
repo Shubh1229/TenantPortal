@@ -1,4 +1,4 @@
-namespace TentantPortal.Shared.Enums 
+namespace TenantPortal.Shared.Enums 
 {
     public enum TransactionStatus 
     {

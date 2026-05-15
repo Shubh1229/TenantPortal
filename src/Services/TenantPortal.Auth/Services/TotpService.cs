@@ -1,5 +1,6 @@
 ﻿using OtpNet;
 using QRCoder;
+using TenantPortal.Auth.Interfaces;
 
 
 namespace TenantPortal.Auth.Services

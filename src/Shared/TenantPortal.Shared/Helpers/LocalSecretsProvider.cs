@@ -2,7 +2,7 @@
 using TenantPortal.Shared.Exceptions;
 using TenantPortal.Shared.Interfaces;
 
-namespace TenantPortal.Auth.Services
+namespace TenantPortal.Shared.Helpers
 {
     public class LocalSecretsProvider : ISecretsProvider
     {

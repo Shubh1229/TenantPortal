@@ -1,6 +1,6 @@
 ﻿using TenantPortal.Auth.DTOs;
 
-namespace TenantPortal.Auth.Services
+namespace TenantPortal.Auth.Interfaces
 {
     public interface IAuthService
     {

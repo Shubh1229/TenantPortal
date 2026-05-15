@@ -1,7 +1,6 @@
-﻿
-using TenantPortal.Auth.Models;
+﻿using TenantPortal.Auth.Models;
 
-namespace TenantPortal.Auth.Services
+namespace TenantPortal.Auth.Interfaces
 {
     public interface IJwtService
     {

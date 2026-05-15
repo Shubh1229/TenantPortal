@@ -2,7 +2,7 @@
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
 using TenantPortal.Auth.DTOs;
-using TenantPortal.Auth.Services;
+using TenantPortal.Auth.Interfaces;
 using TenantPortal.Shared.Constants;
 
 namespace TenantPortal.Auth.Controllers

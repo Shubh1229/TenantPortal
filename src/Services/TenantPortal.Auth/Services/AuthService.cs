@@ -7,6 +7,7 @@ using TenantPortal.Auth.Models;
 using TenantPortal.Shared.Interfaces;
 using System.Security.Cryptography;
 using TenantPortal.Shared.Enums;
+using TenantPortal.Auth.Interfaces;
 
 namespace TenantPortal.Auth.Services
 {
