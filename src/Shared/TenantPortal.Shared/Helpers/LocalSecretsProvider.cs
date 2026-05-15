@@ -26,9 +26,9 @@ namespace TenantPortal.Shared.Helpers
     /// </remarks>
     public class LocalSecretsProvider : ISecretsProvider
     {
-        private static readonly string SecretsPath = FindSecretsFile();
+        private static readonly string? SecretsPath = FindSecretsFile();
 
-        private static string FindSecretsFile()
+        private static string? FindSecretsFile()
         {
             var directory = Directory.GetCurrentDirectory();
             while (true)
@@ -38,8 +38,7 @@ namespace TenantPortal.Shared.Helpers
                     return candidate;
                 var parent = Directory.GetParent(directory);
                 if (parent == null)
-                    throw new FileNotFoundException(
-                        "Could not locate .secrets/secrets.json — ensure it exists at the solution root.");
+                    return null; // file not found, will use env vars
                 directory = parent.FullName;
             }
         }
@@ -47,6 +46,15 @@ namespace TenantPortal.Shared.Helpers
         /// <inheritdoc/>
         public async Task<string> GetSecretAsync(string secretName)
         {
+            // Check environment variables first (Docker)
+            var envValue = Environment.GetEnvironmentVariable(secretName);
+            if (!string.IsNullOrEmpty(envValue))
+                return envValue;
+
+            // Fall back to secrets.json (local dev)
+            if (SecretsPath == null)
+                throw new NotFoundException($"Secret '{secretName}' not found — no secrets.json and no environment variable set");
+
             var json = await File.ReadAllTextAsync(SecretsPath);
             var secrets = JsonSerializer.Deserialize<Dictionary<string, string>>(json);
             if (secrets == null || !secrets.TryGetValue(secretName, out var value))
