@@ -10,7 +10,6 @@ import {
     FileText,
     Bell,
     Calendar,
-    Users,
     LogOut,
     Building2,
 } from 'lucide-react';
@@ -25,7 +24,6 @@ function roleNavItems(role: string | null): NavItem[] {
     if (role === 'SuperAdmin') {
         return [
             { href: '/super-admin', label: 'Dashboard', icon: <LayoutDashboard size={18} /> },
-            { href: '/super-admin/invite', label: 'Invite Users', icon: <Users size={18} /> },
         ];
     }
     if (role === 'Admin') {
