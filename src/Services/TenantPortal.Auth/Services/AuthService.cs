@@ -173,6 +173,20 @@ namespace TenantPortal.Auth.Services
             if (creator == null || creator.Role == UserRole.Tenant)
                 return false;
 
+            // SaaS tenant limit: Admins on a paid plan can only invite up to MaxTenants tenants.
+            // MaxTenants == null means unlimited (SuperAdmin and legacy personal-use admins).
+            if (creator.Role == UserRole.Admin && creator.MaxTenants.HasValue)
+            {
+                var activeTenantCount = await _context.Users.CountAsync(u =>
+                    u.InvitedBy == createdBy &&
+                    u.Role == UserRole.Tenant &&
+                    u.IsActive &&
+                    !u.IsDeleted);
+
+                if (activeTenantCount >= creator.MaxTenants.Value)
+                    return false;
+            }
+
             var plainToken = _jwtService.GenerateRefreshToken();
             await _context.InviteTokens.AddAsync(new InviteToken
             {

@@ -19,6 +19,9 @@ namespace TenantPortal.Transactions.Data
             modelBuilder.Entity<Transaction>().HasIndex(t => t.DueDate);
             modelBuilder.Entity<TenantUnitAssignment>().HasIndex(t => t.TenantId);
             modelBuilder.Entity<TenantUnitAssignment>().HasIndex(t => t.UnitId);
+
+            // Supports the per-admin scope query: filter Properties by AdminId, then join to Units/Transactions
+            modelBuilder.Entity<Property>().HasIndex(p => p.AdminId);
         }
 
         /// <summary>Rental properties.</summary>

@@ -64,36 +64,47 @@ namespace TenantPortal.Contracts.Services
         {
             if (role == UserRole.Tenant)
             {
-                var contracts = await _context.Contracts.Where(c => c.TenantId == userId && !c.IsDeleted).ToListAsync();
-                if (contracts == null || !contracts.Any()) return new List<ContractResponseDTO>();
-                List<ContractResponseDTO> response = new List<ContractResponseDTO>();
-                foreach (var contract in contracts)
-                {
-                    response.Add(MapToDTO(contract));
-                }
-                return response;
+                var contracts = await _context.Contracts
+                    .Where(c => c.TenantId == userId && !c.IsDeleted)
+                    .ToListAsync();
+                return contracts.Select(MapToDTO).ToList();
             }
-            var allContracts = await _context.Contracts.Where(c => !c.IsDeleted).ToListAsync();
-            if (allContracts == null || !allContracts.Any()) return new List<ContractResponseDTO>();
-            List<ContractResponseDTO> allResponse = new List<ContractResponseDTO>();
-            foreach (var contract in allContracts)
+
+            if (role == UserRole.Admin)
             {
-                allResponse.Add(MapToDTO(contract));
+                // Admins see only contracts they uploaded (i.e. contracts for their own tenants).
+                // UploadedBy is always the uploading Admin, so this correctly scopes to their tenant portfolio.
+                var contracts = await _context.Contracts
+                    .Where(c => c.UploadedBy == userId && !c.IsDeleted)
+                    .ToListAsync();
+                return contracts.Select(MapToDTO).ToList();
             }
-            return allResponse;
+
+            // SuperAdmin sees everything
+            return (await _context.Contracts.Where(c => !c.IsDeleted).ToListAsync())
+                .Select(MapToDTO).ToList();
         }
 
         public async Task<ContractResponseDTO?> GetContractAsync(Guid contractId, Guid userId, UserRole role)
         {
             if (role == UserRole.Tenant)
             {
-                var contract = await _context.Contracts.FirstOrDefaultAsync(c => c.Id == contractId && c.TenantId == userId && !c.IsDeleted);
-                if (contract == null) return null;
-                return MapToDTO(contract);
+                var contract = await _context.Contracts.FirstOrDefaultAsync(c =>
+                    c.Id == contractId && c.TenantId == userId && !c.IsDeleted);
+                return contract == null ? null : MapToDTO(contract);
             }
-            var contractForAdmin = await _context.Contracts.FirstOrDefaultAsync(c => c.Id == contractId && !c.IsDeleted);
-            if (contractForAdmin == null) return null;
-            return MapToDTO(contractForAdmin);
+
+            if (role == UserRole.Admin)
+            {
+                var contract = await _context.Contracts.FirstOrDefaultAsync(c =>
+                    c.Id == contractId && c.UploadedBy == userId && !c.IsDeleted);
+                return contract == null ? null : MapToDTO(contract);
+            }
+
+            // SuperAdmin can access any contract
+            var adminContract = await _context.Contracts.FirstOrDefaultAsync(c =>
+                c.Id == contractId && !c.IsDeleted);
+            return adminContract == null ? null : MapToDTO(adminContract);
         }
 
         public async Task<bool> UploadContractAsync(UploadContractRequestDTO request, Guid userId, UserRole role)
