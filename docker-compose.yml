@@ -1,16 +1,19 @@
-version: '3.9'
-
 services:
   postgres:
     image: postgres:16
     container_name: tenantportal-postgres
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: yourpassword
+      POSTGRES_PASSWORD: postgres
     ports:
       - "5432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   gateway:
     build:
@@ -19,11 +22,21 @@ services:
     container_name: tenantportal-gateway
     ports:
       - "5000:8080"
+    environment:
+      - Jwt__SigningKey=91nIByLbGNp91F5OiYa5Xx26geMn8quNQHZY6frSRLM=
+      - ReverseProxy__Clusters__auth-cluster__Destinations__auth-destination__Address=http://auth:8080
+      - ReverseProxy__Clusters__transactions-cluster__Destinations__transactions-destination__Address=http://transactions:8080
+      - ReverseProxy__Clusters__contracts-cluster__Destinations__contracts-destination__Address=http://contracts:8080
+      - ReverseProxy__Clusters__notifications-cluster__Destinations__notifications-destination__Address=http://notifications:8080
     depends_on:
-      - auth
-      - transactions
-      - contracts
-      - notifications
+      auth:
+        condition: service_started
+      transactions:
+        condition: service_started
+      contracts:
+        condition: service_started
+      notifications:
+        condition: service_started
 
   auth:
     build:
@@ -33,9 +46,20 @@ services:
     ports:
       - "5001:8080"
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     environment:
-      - ConnectionStrings__Postgres=Host=postgres;Database=tenantportal_auth;Username=postgres;Password=yourpassword
+      - Jwt__SigningKey=91nIByLbGNp91F5OiYa5Xx26geMn8quNQHZY6frSRLM=
+      - ConnectionStrings__Postgres=Host=postgres;Port=5432;Database=tenantportal_auth;Username=postgres;Password=postgres
+      - Stripe__SecretKey=sk_test_placeholder
+      - Stripe__WebhookSecret=whsec_placeholder
+      - Totp__EncryptionKey=91nIByLbGNp91F5OiYa5Xx26geMn8quNQHZY6frSRLM=
+      - SuperAdmin__Email=shubh610@gmail.com
+      - SuperAdmin__Password=Yorkshire$1229
+      - AzureBlobStorage__ConnectionString=placeholder
+      - AzureCommunicationServices__ConnectionString=placeholder
+      - Notifications__GrpcUrl=http://notifications:8080
+      - Frontend__BaseUrl=http://localhost:3000
 
   transactions:
     build:
@@ -45,9 +69,14 @@ services:
     ports:
       - "5002:8080"
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     environment:
-      - ConnectionStrings__Postgres=Host=postgres;Database=tenantportal_transactions;Username=postgres;Password=yourpassword
+      - Jwt__SigningKey=91nIByLbGNp91F5OiYa5Xx26geMn8quNQHZY6frSRLM=
+      - ConnectionStrings__Postgres=Host=postgres;Port=5432;Database=tenantportal_transactions;Username=postgres;Password=postgres
+      - Stripe__SecretKey=sk_test_placeholder
+      - Stripe__WebhookSecret=whsec_placeholder
+      - Notifications__GrpcUrl=http://notifications:8080
 
   contracts:
     build:
@@ -57,9 +86,12 @@ services:
     ports:
       - "5003:8080"
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     environment:
-      - ConnectionStrings__Postgres=Host=postgres;Database=tenantportal_contracts;Username=postgres;Password=yourpassword
+      - Jwt__SigningKey=91nIByLbGNp91F5OiYa5Xx26geMn8quNQHZY6frSRLM=
+      - ConnectionStrings__Postgres=Host=postgres;Port=5432;Database=tenantportal_contracts;Username=postgres;Password=postgres
+      - AzureBlobStorage__ConnectionString=placeholder
 
   notifications:
     build:
@@ -69,9 +101,12 @@ services:
     ports:
       - "5004:8080"
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     environment:
-      - ConnectionStrings__Postgres=Host=postgres;Database=tenantportal_notifications;Username=postgres;Password=yourpassword
+      - Jwt__SigningKey=91nIByLbGNp91F5OiYa5Xx26geMn8quNQHZY6frSRLM=
+      - ConnectionStrings__Postgres=Host=postgres;Port=5432;Database=tenantportal_notifications;Username=postgres;Password=postgres
+      - AzureCommunicationServices__ConnectionString=placeholder
 
 volumes:
   postgres-data:

@@ -30,6 +30,9 @@ export const transactionsApi = {
             method: 'PATCH',
         }),
 
+    getRentSchedule: (tenantId: string) =>
+        apiRequest<import('@/types').RentSchedule>(`/api/rent-schedule/${tenantId}`),
+
     createPaymentIntent: (data: unknown) =>
         apiRequest<string>('/api/transactions/payment-intent', {
             method: 'POST',
