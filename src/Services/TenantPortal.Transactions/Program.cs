@@ -21,7 +21,7 @@ builder.Services.AddSerilog();
 builder.Services.AddOpenApi();
 
 // Load the JWT signing key at startup so it matches the key used by the Auth service
-var startupSecrets = new LocalSecretsProvider();
+var startupSecrets = new AzureVaultSecretsProvider("https://singhrentalhub-vault.vault.azure.net/"); // new LocalSecretsProvider();
 var jwtSigningKey = startupSecrets.GetSecretAsync(SecretKeys.JwtSigningKey).GetAwaiter().GetResult();
 
 builder.Services.AddAuthentication(options =>
