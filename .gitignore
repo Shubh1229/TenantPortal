@@ -19,8 +19,8 @@
 **/secrets.json
 
 .claude
-.github
 .secret
+.env.prod
 .secret/
 .secret/*
 .secret/**
