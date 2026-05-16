@@ -67,11 +67,23 @@ builder.Services.AddScoped<ISecretsProvider, LocalSecretsProvider>();
 
 builder.Services.AddControllers();
 
+// gRPC server — listens on the same port as REST via Http1AndHttp2 (configured in appsettings.json).
+// Only internal services (Auth, Transactions) call these endpoints; they are not exposed to the gateway.
+builder.Services.AddGrpc();
+
 var app = builder.Build();
 
 app.UseHttpsRedirection();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
+app.MapGrpcService<TenantPortal.Notifications.Services.NotificationGrpcService>();
+
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<NotificationDbContext>();
+    db.Database.Migrate();
+}
+
 
 app.Run();

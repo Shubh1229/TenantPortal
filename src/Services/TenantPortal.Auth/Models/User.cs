@@ -61,5 +61,32 @@ namespace TenantPortal.Auth.Models
 
         /// <summary>ID of the user who sent the invitation that created this account. <c>null</c> for the Super Admin.</summary>
         public Guid? InvitedBy { get; set; }
+
+        // ── SaaS Subscription Fields (Admin role only) ────────────────────────────
+
+        /// <summary>
+        /// Stripe Customer ID assigned at self-serve Admin registration.
+        /// <c>null</c> for SuperAdmin and Tenants (they do not have subscriptions).
+        /// </summary>
+        public string? StripeCustomerId { get; set; }
+
+        /// <summary>
+        /// Stripe Subscription ID assigned once a checkout session is completed.
+        /// <c>null</c> until the first successful subscription creation webhook fires.
+        /// </summary>
+        public string? StripeSubscriptionId { get; set; }
+
+        /// <summary>
+        /// Current state of the Admin's SaaS subscription.
+        /// <see cref="SubscriptionStatus.None"/> for SuperAdmin, Tenants, and invited Admins (personal use).
+        /// </summary>
+        public SubscriptionStatus SubscriptionStatus { get; set; } = SubscriptionStatus.None;
+
+        /// <summary>
+        /// Maximum number of active tenants this Admin is allowed to invite.
+        /// <c>null</c> means unlimited (SuperAdmin and legacy Admins from the personal-use setup).
+        /// Set to 10 for the base $20/month plan; increase for higher tiers.
+        /// </summary>
+        public int? MaxTenants { get; set; }
     }
 }

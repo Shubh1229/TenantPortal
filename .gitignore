@@ -19,7 +19,12 @@
 **/secrets.json
 
 .claude
-.github
+.secret
+.env.prod
+.secret/
+.secret/*
+.secret/**
+
 
 Media
 # Mono auto generated files

@@ -1,0 +1,72 @@
+syntax = "proto3";
+
+option csharp_namespace = "TenantPortal.Grpc";
+
+package notifications;
+
+// gRPC service exposed by the Notifications service for internal container-to-container calls.
+// Uses HTTP/2 over the same port as the REST API (Http1AndHttp2 protocol on the Kestrel endpoint).
+// All other services (Auth, Transactions, Contracts) act as clients.
+service NotificationGrpcService {
+
+  // Send a transactional invite email to a newly invited user.
+  // The Notifications service checks email preferences but always sends invite emails
+  // regardless of opt-out (invite delivery is mandatory).
+  rpc SendInviteEmail(SendInviteEmailRequest) returns (GrpcResult);
+
+  // Create an in-app notification for a user.
+  // Always delivered regardless of email preferences.
+  rpc CreateInAppNotification(CreateInAppNotificationRequest) returns (GrpcResult);
+
+  // Send a generic transactional email to a user.
+  // Respects the recipient's email-enabled preference.
+  rpc SendTransactionalEmail(SendTransactionalEmailRequest) returns (GrpcResult);
+}
+
+message SendInviteEmailRequest {
+  // Recipient email address (the invitee).
+  string to_email = 1;
+
+  // Plain-text invite token. The registration URL is built by the Notifications service.
+  string invite_token = 2;
+
+  // Role being assigned (e.g. "Admin", "Tenant"). Included in the email body.
+  string role = 3;
+
+  // Base URL of the frontend (e.g. https://app.tenantportal.com).
+  // Used to construct the registration link: {base_url}/register?token={invite_token}
+  string frontend_base_url = 4;
+}
+
+message CreateInAppNotificationRequest {
+  // User ID (UUID string) of the notification recipient.
+  string user_id = 1;
+
+  // NotificationType enum integer value from TenantPortal.Shared.Enums.
+  int32 notification_type = 2;
+
+  // Human-readable notification message displayed in the inbox.
+  string message = 3;
+}
+
+message SendTransactionalEmailRequest {
+  // User ID (UUID string) used to look up email preferences.
+  string user_id = 1;
+
+  // Recipient email address.
+  string to_email = 2;
+
+  // Email subject line.
+  string subject = 3;
+
+  // HTML email body.
+  string html_body = 4;
+}
+
+// Generic result returned by all service methods.
+message GrpcResult {
+  bool success = 1;
+
+  // Optional human-readable error description when success == false.
+  string error = 2;
+}

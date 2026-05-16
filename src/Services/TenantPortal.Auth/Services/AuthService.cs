@@ -19,6 +19,8 @@ namespace TenantPortal.Auth.Services
         private readonly ITotpService _totpService;
         private readonly AuthDbContext _context;
         private readonly ISecretsProvider _secretsProvider;
+        private readonly INotificationsGrpcClient _notificationsGrpc;
+        private readonly IConfiguration _configuration;
 
         // Holds temp tokens issued after password validation, pending TOTP verification.
         // Static + ConcurrentDictionary so multiple concurrent login attempts don't race.
@@ -29,12 +31,16 @@ namespace TenantPortal.Auth.Services
             IJwtService jwtService,
             ITotpService totpService,
             AuthDbContext context,
-            ISecretsProvider secretsProvider)
+            ISecretsProvider secretsProvider,
+            INotificationsGrpcClient notificationsGrpc,
+            IConfiguration configuration)
         {
             _jwtService = jwtService;
             _totpService = totpService;
             _context = context;
             _secretsProvider = secretsProvider;
+            _notificationsGrpc = notificationsGrpc;
+            _configuration = configuration;
         }
 
         /// <inheritdoc/>
@@ -173,6 +179,20 @@ namespace TenantPortal.Auth.Services
             if (creator == null || creator.Role == UserRole.Tenant)
                 return false;
 
+            // SaaS tenant limit: Admins on a paid plan can only invite up to MaxTenants tenants.
+            // MaxTenants == null means unlimited (SuperAdmin and legacy personal-use admins).
+            if (creator.Role == UserRole.Admin && creator.MaxTenants.HasValue)
+            {
+                var activeTenantCount = await _context.Users.CountAsync(u =>
+                    u.InvitedBy == createdBy &&
+                    u.Role == UserRole.Tenant &&
+                    u.IsActive &&
+                    !u.IsDeleted);
+
+                if (activeTenantCount >= creator.MaxTenants.Value)
+                    return false;
+            }
+
             var plainToken = _jwtService.GenerateRefreshToken();
             await _context.InviteTokens.AddAsync(new InviteToken
             {
@@ -188,9 +208,11 @@ namespace TenantPortal.Auth.Services
 
             await _context.SaveChangesAsync();
 
-            // TODO: deliver plainToken to the invitee via the Notification service.
-            // The registration link should be: https://<domain>/register?token=<plainToken>
-            // Wire up NotificationService.SendEmailAsync once inter-service communication is established.
+            // Fire invite email via gRPC — failure is non-fatal; the invite row is already persisted.
+            var frontendBaseUrl = _configuration["Frontend:BaseUrl"] ?? "http://localhost:3000";
+            await _notificationsGrpc.SendInviteEmailAsync(
+                request.Email, plainToken, request.Role.ToString(), frontendBaseUrl);
+
             return true;
         }
 

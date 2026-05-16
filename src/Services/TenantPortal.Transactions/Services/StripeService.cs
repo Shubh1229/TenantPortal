@@ -23,27 +23,49 @@ namespace TenantPortal.Transactions.Services
         {
             try
             {
-                RentSchedule? schedule = await _context.RentSchedules.FirstOrDefaultAsync(s => s.Id == request.RentScheduleId);
+                var schedule = await _context.RentSchedules.FirstOrDefaultAsync(s => s.Id == request.RentScheduleId);
                 if (schedule == null)
-                {
                     return null;
-                }
+
                 var stripeKey = await _secretsProvider.GetSecretAsync(SecretKeys.StripeSecretKey);
                 StripeConfiguration.ApiKey = stripeKey;
+
+                var isAch = request.PaymentMethodType?.Equals("ach", StringComparison.OrdinalIgnoreCase) == true;
+
                 var options = new PaymentIntentCreateOptions
                 {
                     Amount = (long)(request.Amount * 100),
                     Currency = request.Currency,
+                    PaymentMethodTypes = isAch
+                        ? new List<string> { "us_bank_account" }
+                        : new List<string> { "card" },
                     Metadata = new Dictionary<string, string>
                     {
                         { "UserId", userId.ToString() },
-                        { "RentScheduleId", request.RentScheduleId.ToString() }
+                        { "RentScheduleId", request.RentScheduleId.ToString() },
+                        { "PaymentMethodType", isAch ? "ach" : "card" }
                     }
                 };
-                var service = new PaymentIntentService();
-                var intent = await service.CreateAsync(options);
+
+                // ACH (us_bank_account) requires Financial Connections for instant bank verification
+                if (isAch)
+                {
+                    options.PaymentMethodOptions = new PaymentIntentPaymentMethodOptionsOptions
+                    {
+                        UsBankAccount = new PaymentIntentPaymentMethodOptionsUsBankAccountOptions
+                        {
+                            FinancialConnections = new PaymentIntentPaymentMethodOptionsUsBankAccountFinancialConnectionsOptions
+                            {
+                                Permissions = new List<string> { "payment_method" }
+                            }
+                        }
+                    };
+                }
+
+                var intent = await new PaymentIntentService().CreateAsync(options);
                 return intent.ClientSecret;
-            } catch (Exception)
+            }
+            catch (Exception)
             {
                 return null;
             }

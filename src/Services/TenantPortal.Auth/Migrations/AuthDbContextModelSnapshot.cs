@@ -87,12 +87,30 @@ namespace TenantPortal.Auth.Migrations
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("boolean");
 
+                    b.Property<int?>("MaxTenants")
+                        .HasColumnType("integer");
+
                     b.Property<string>("PasswordHash")
                         .IsRequired()
                         .HasMaxLength(512)
                         .HasColumnType("character varying(512)");
 
+                    b.Property<DateTime?>("RefreshTokenExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("RefreshTokenHash")
+                        .HasColumnType("text");
+
                     b.Property<int>("Role")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("StripeCustomerId")
+                        .HasColumnType("text");
+
+                    b.Property<string>("StripeSubscriptionId")
+                        .HasColumnType("text");
+
+                    b.Property<int>("SubscriptionStatus")
                         .HasColumnType("integer");
 
                     b.Property<string>("TotpSecret")

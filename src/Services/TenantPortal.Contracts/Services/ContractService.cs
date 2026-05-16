@@ -41,59 +41,72 @@ namespace TenantPortal.Contracts.Services
 
         public async Task<ContractDownloadResponseDTO?> DownloadContractAsync(Guid contractId, Guid userId, UserRole role)
         {
-            Contract? contract = null;
+            Contract? contract;
             if (role == UserRole.Tenant)
-            {
                 contract = await _context.Contracts.FirstOrDefaultAsync(c => c.Id == contractId && c.TenantId == userId && !c.IsDeleted);
-            }
+            else if (role == UserRole.Admin)
+                contract = await _context.Contracts.FirstOrDefaultAsync(c => c.Id == contractId && c.UploadedBy == userId && !c.IsDeleted);
             else
-            {
                 contract = await _context.Contracts.FirstOrDefaultAsync(c => c.Id == contractId && !c.IsDeleted);
-            }
+
             if (contract == null) return null;
-            var response = new ContractDownloadResponseDTO
+
+            var expiresAt = DateTimeOffset.UtcNow.AddMinutes(15);
+            var downloadUrl = GenerateSasUrl(contract.BlobStoragePath, expiresAt);
+
+            return new ContractDownloadResponseDTO
             {
                 FileName = contract.FileName,
-                DownloadUrl = "TEST",
-                ExpiresAt = DateTime.UtcNow.AddMinutes(15)
+                DownloadUrl = downloadUrl,
+                ExpiresAt = expiresAt.UtcDateTime
             };
-            return response;
         }
 
         public async Task<List<ContractResponseDTO>> GetAllContractsAsync(Guid userId, UserRole role)
         {
             if (role == UserRole.Tenant)
             {
-                var contracts = await _context.Contracts.Where(c => c.TenantId == userId && !c.IsDeleted).ToListAsync();
-                if (contracts == null || !contracts.Any()) return new List<ContractResponseDTO>();
-                List<ContractResponseDTO> response = new List<ContractResponseDTO>();
-                foreach (var contract in contracts)
-                {
-                    response.Add(MapToDTO(contract));
-                }
-                return response;
+                var contracts = await _context.Contracts
+                    .Where(c => c.TenantId == userId && !c.IsDeleted)
+                    .ToListAsync();
+                return contracts.Select(MapToDTO).ToList();
             }
-            var allContracts = await _context.Contracts.Where(c => !c.IsDeleted).ToListAsync();
-            if (allContracts == null || !allContracts.Any()) return new List<ContractResponseDTO>();
-            List<ContractResponseDTO> allResponse = new List<ContractResponseDTO>();
-            foreach (var contract in allContracts)
+
+            if (role == UserRole.Admin)
             {
-                allResponse.Add(MapToDTO(contract));
+                // Admins see only contracts they uploaded (i.e. contracts for their own tenants).
+                // UploadedBy is always the uploading Admin, so this correctly scopes to their tenant portfolio.
+                var contracts = await _context.Contracts
+                    .Where(c => c.UploadedBy == userId && !c.IsDeleted)
+                    .ToListAsync();
+                return contracts.Select(MapToDTO).ToList();
             }
-            return allResponse;
+
+            // SuperAdmin sees everything
+            return (await _context.Contracts.Where(c => !c.IsDeleted).ToListAsync())
+                .Select(MapToDTO).ToList();
         }
 
         public async Task<ContractResponseDTO?> GetContractAsync(Guid contractId, Guid userId, UserRole role)
         {
             if (role == UserRole.Tenant)
             {
-                var contract = await _context.Contracts.FirstOrDefaultAsync(c => c.Id == contractId && c.TenantId == userId && !c.IsDeleted);
-                if (contract == null) return null;
-                return MapToDTO(contract);
+                var contract = await _context.Contracts.FirstOrDefaultAsync(c =>
+                    c.Id == contractId && c.TenantId == userId && !c.IsDeleted);
+                return contract == null ? null : MapToDTO(contract);
             }
-            var contractForAdmin = await _context.Contracts.FirstOrDefaultAsync(c => c.Id == contractId && !c.IsDeleted);
-            if (contractForAdmin == null) return null;
-            return MapToDTO(contractForAdmin);
+
+            if (role == UserRole.Admin)
+            {
+                var contract = await _context.Contracts.FirstOrDefaultAsync(c =>
+                    c.Id == contractId && c.UploadedBy == userId && !c.IsDeleted);
+                return contract == null ? null : MapToDTO(contract);
+            }
+
+            // SuperAdmin can access any contract
+            var adminContract = await _context.Contracts.FirstOrDefaultAsync(c =>
+                c.Id == contractId && !c.IsDeleted);
+            return adminContract == null ? null : MapToDTO(adminContract);
         }
 
         public async Task<bool> UploadContractAsync(UploadContractRequestDTO request, Guid userId, UserRole role)
@@ -133,17 +146,38 @@ namespace TenantPortal.Contracts.Services
             }
         }
 
-        private ContractResponseDTO MapToDTO(Contract contract)
+        private ContractResponseDTO MapToDTO(Contract contract) => new ContractResponseDTO
         {
-            return new ContractResponseDTO
+            Id = contract.Id,
+            TenantId = contract.TenantId,
+            FileName = contract.FileName,
+            IsCurrent = contract.IsCurrent,
+            UploadedAt = contract.UploadedAt,
+            // Listing URLs use a longer expiry (1 h) so the page remains usable without re-fetching.
+            // Actual download URLs (15 min) are issued by DownloadContractAsync.
+            DownloadUrl = GenerateSasUrl(contract.BlobStoragePath, DateTimeOffset.UtcNow.AddHours(1))
+        };
+
+        /// <summary>
+        /// Generates a time-limited Azure Blob SAS read URL.
+        /// Falls back to an empty string when the BlobServiceClient lacks shared-key credentials
+        /// (e.g. managed identity without user-delegation key setup).
+        /// </summary>
+        private string GenerateSasUrl(string blobPath, DateTimeOffset expiresOn)
+        {
+            try
             {
-                Id = contract.Id,
-                TenantId = contract.TenantId,
-                FileName = contract.FileName,
-                IsCurrent = contract.IsCurrent,
-                UploadedAt = contract.UploadedAt,
-                DownloadUrl = "TEST" //_blobClient.GetBlobContainerClient("contracts").GetBlobClient(contract.BlobStoragePath).GenerateSasUri(Azure.Storage.Sas.BlobSasPermissions.Read, DateTimeOffset.UtcNow.AddHours(1)).ToString()
-            };
+                var blobClient = _blobClient
+                    .GetBlobContainerClient("contracts")
+                    .GetBlobClient(blobPath);
+                return blobClient.GenerateSasUri(
+                    Azure.Storage.Sas.BlobSasPermissions.Read,
+                    expiresOn).ToString();
+            }
+            catch
+            {
+                return string.Empty;
+            }
         }
     }
 }

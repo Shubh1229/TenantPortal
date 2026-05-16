@@ -16,6 +16,13 @@ namespace TenantPortal.Transactions.Models
         /// <summary>Full mailing address of the property.</summary>
         public required string Address { get; set; }
 
+        /// <summary>
+        /// The Admin who owns and manages this property.
+        /// <c>null</c> for properties created before per-admin scoping was introduced
+        /// (these are visible to SuperAdmin only and treated as platform-managed).
+        /// </summary>
+        public Guid? AdminId { get; set; }
+
         /// <summary>Whether the property is currently in use.</summary>
         public required bool IsActive { get; set; }
 

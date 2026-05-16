@@ -18,5 +18,18 @@ namespace TenantPortal.Shared.Constants
 
         /// <summary>Azure Communication Services connection string used to send transactional emails.</summary>
         public const string AzureCommunicationServices = "AzureCommunicationServices__ConnectionString";
+
+        /// <summary>Stripe Price ID for the $20/month SaaS plan used to create Checkout Sessions.</summary>
+        public const string StripePriceId = "Stripe__PriceId";
+
+        /// <summary>
+        /// Stripe webhook signing secret for the subscription webhook endpoint.
+        /// This is a separate secret from <see cref="StripeWebhookSecret"/> because
+        /// subscription events are routed to a different endpoint in Stripe's dashboard.
+        /// </summary>
+        public const string StripeSubscriptionWebhookSecret = "Stripe__SubscriptionWebhookSecret";
+
+        public const string SuperAdminEmail = "SuperAdmin__Email";
+        public const string SuperAdminPassword = "SuperAdmin__Password";
     }
 }

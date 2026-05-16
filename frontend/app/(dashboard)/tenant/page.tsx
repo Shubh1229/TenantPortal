@@ -1,23 +1,58 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { transactionsApi } from '@/lib/api/transactions';
 import { notificationsApi } from '@/lib/api/notifications';
-import { Transaction, Notification, RentSchedule } from '@/types';
+import { Transaction, Notification } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { CalendarClock, Clock, AlertTriangle, CreditCard } from 'lucide-react';
+
+const STATUS_STYLES: Record<string, string> = {
+    Confirmed: 'bg-emerald-500/10 text-emerald-400 ring-1 ring-emerald-500/20',
+    Pending:   'bg-yellow-500/10 text-yellow-400 ring-1 ring-yellow-500/20',
+    Declined:  'bg-red-500/10 text-red-400 ring-1 ring-red-500/20',
+    Overdue:   'bg-red-600/20 text-red-300 ring-1 ring-red-600/30',
+};
 
 function StatusBadge({ status }: { status: string }) {
-    const variants: Record<string, string> = {
-        Confirmed: 'bg-green-100 text-green-800',
-        Pending: 'bg-yellow-100 text-yellow-800',
-        Declined: 'bg-red-100 text-red-800',
-        Overdue: 'bg-red-200 text-red-900',
-    };
     return (
-        <span className={`px-2 py-1 rounded-full text-xs font-medium ${variants[status] ?? 'bg-slate-100'}`}>
+        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_STYLES[status] ?? 'bg-zinc-700 text-zinc-300'}`}>
             {status}
         </span>
+    );
+}
+
+interface StatCardProps {
+    title: string;
+    value: string;
+    sub?: string;
+    icon: React.ReactNode;
+    accent: string;
+    href?: string;
+}
+
+function StatCard({ title, value, sub, icon, accent, href }: StatCardProps) {
+    const inner = (
+        <CardContent className="pt-5 pb-5">
+            <div className="flex items-start justify-between">
+                <div>
+                    <p className="text-xs text-zinc-500 uppercase tracking-wide mb-1">{title}</p>
+                    <p className="text-2xl font-bold text-white">{value}</p>
+                    {sub && <p className="text-xs text-zinc-500 mt-0.5">{sub}</p>}
+                </div>
+                <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${accent}`}>
+                    {icon}
+                </div>
+            </div>
+        </CardContent>
+    );
+
+    return (
+        <Card className={`bg-zinc-900 border-zinc-800 ${href ? 'hover:border-zinc-600 transition-colors cursor-pointer' : ''}`}>
+            {href ? <Link href={href}>{inner}</Link> : inner}
+        </Card>
     );
 }
 
@@ -27,21 +62,13 @@ export default function TenantDashboard() {
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
-        async function load() {
-            try {
-                const [txns, notifs] = await Promise.all([
-                    transactionsApi.getAll(),
-                    notificationsApi.getAll(),
-                ]);
+        Promise.all([transactionsApi.getAll(), notificationsApi.getAll()])
+            .then(([txns, notifs]) => {
                 setTransactions(txns);
                 setNotifications(notifs.filter(n => !n.isRead).slice(0, 5));
-            } catch (e) {
-                console.error(e);
-            } finally {
-                setIsLoading(false);
-            }
-        }
-        load();
+            })
+            .catch(console.error)
+            .finally(() => setIsLoading(false));
     }, []);
 
     const nextDue = transactions
@@ -51,76 +78,82 @@ export default function TenantDashboard() {
     const overdueCount = transactions.filter(t => t.status === 'Overdue').length;
     const pendingCount = transactions.filter(t => t.status === 'Pending').length;
 
-    if (isLoading) return <div>Loading...</div>;
+    if (isLoading) {
+        return <div className="text-zinc-400 text-sm">Loading...</div>;
+    }
 
     return (
-        <div className="space-y-6">
-            <h2 className="text-2xl font-semibold">My Dashboard</h2>
-
-            {/* Summary Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <Card>
-                    <CardHeader className="pb-2">
-                        <CardTitle className="text-sm font-medium text-slate-500">Next Payment Due</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        {nextDue ? (
-                            <>
-                                <p className="text-2xl font-bold">${nextDue.amount.toFixed(2)}</p>
-                                <p className="text-sm text-slate-500">
-                                    Due {new Date(nextDue.dueDate!).toLocaleDateString()}
-                                </p>
-                            </>
-                        ) : (
-                            <p className="text-sm text-slate-500">No upcoming payments</p>
-                        )}
-                    </CardContent>
-                </Card>
-
-                <Card>
-                    <CardHeader className="pb-2">
-                        <CardTitle className="text-sm font-medium text-slate-500">Pending Requests</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <p className="text-2xl font-bold">{pendingCount}</p>
-                        <p className="text-sm text-slate-500">Awaiting approval</p>
-                    </CardContent>
-                </Card>
-
-                <Card>
-                    <CardHeader className="pb-2">
-                        <CardTitle className="text-sm font-medium text-slate-500">Overdue</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <p className={`text-2xl font-bold ${overdueCount > 0 ? 'text-red-600' : ''}`}>
-                            {overdueCount}
-                        </p>
-                        <p className="text-sm text-slate-500">Payments overdue</p>
-                    </CardContent>
-                </Card>
+        <div className="space-y-7">
+            <div>
+                <h1 className="text-2xl font-semibold text-white">My Dashboard</h1>
+                <p className="text-sm text-zinc-500 mt-0.5">Your account at a glance</p>
             </div>
 
-            {/* Recent Transactions */}
-            <Card>
-                <CardHeader>
-                    <CardTitle>Recent Transactions</CardTitle>
+            {/* Stat cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <StatCard
+                    title="Next Payment"
+                    value={nextDue ? `$${nextDue.amount.toFixed(2)}` : '—'}
+                    sub={nextDue ? `Due ${new Date(nextDue.dueDate!).toLocaleDateString()}` : 'All caught up'}
+                    icon={<CalendarClock size={18} className="text-indigo-400" />}
+                    accent="bg-indigo-500/10"
+                    href="/tenant/payment"
+                />
+                <StatCard
+                    title="Pending Requests"
+                    value={String(pendingCount)}
+                    sub="awaiting approval"
+                    icon={<Clock size={18} className="text-yellow-400" />}
+                    accent="bg-yellow-500/10"
+                />
+                <StatCard
+                    title="Overdue"
+                    value={String(overdueCount)}
+                    sub={overdueCount > 0 ? 'action required' : 'nothing overdue'}
+                    icon={<AlertTriangle size={18} className={overdueCount > 0 ? 'text-red-400' : 'text-zinc-500'} />}
+                    accent={overdueCount > 0 ? 'bg-red-500/10' : 'bg-zinc-800'}
+                />
+                <StatCard
+                    title="Make Payment"
+                    value="Pay Now"
+                    sub="card or ACH"
+                    icon={<CreditCard size={18} className="text-emerald-400" />}
+                    accent="bg-emerald-500/10"
+                    href="/tenant/payment"
+                />
+            </div>
+
+            {/* Recent transactions */}
+            <Card className="bg-zinc-900 border-zinc-800">
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                    <CardTitle className="text-base text-white">Recent Transactions</CardTitle>
+                    <Link href="/tenant/payment">
+                        <Button size="sm" className="bg-indigo-600 hover:bg-indigo-500 text-white h-7 text-xs">
+                            Make Payment
+                        </Button>
+                    </Link>
                 </CardHeader>
                 <CardContent>
                     {transactions.length === 0 ? (
-                        <p className="text-sm text-slate-500">No transactions found.</p>
+                        <p className="text-sm text-zinc-500">No transactions found.</p>
                     ) : (
-                        <div className="space-y-3">
+                        <div className="space-y-1">
                             {transactions.slice(0, 10).map(t => (
-                                <div key={t.id} className="flex items-center justify-between py-2 border-b last:border-0">
+                                <div
+                                    key={t.id}
+                                    className="flex items-center justify-between py-3 border-b border-zinc-800 last:border-0"
+                                >
                                     <div>
-                                        <p className="text-sm font-medium">{t.type}</p>
-                                        <p className="text-xs text-slate-500">
+                                        <p className="text-sm font-medium text-zinc-200">{t.type}</p>
+                                        <p className="text-xs text-zinc-500">
                                             {t.dueDate ? `Due ${new Date(t.dueDate).toLocaleDateString()}` : 'No due date'}
                                         </p>
                                     </div>
                                     <div className="flex items-center gap-3">
                                         <StatusBadge status={t.status} />
-                                        <span className="text-sm font-semibold">${t.amount.toFixed(2)}</span>
+                                        <span className="text-sm font-semibold text-zinc-200">
+                                            ${t.amount.toFixed(2)}
+                                        </span>
                                     </div>
                                 </div>
                             ))}
@@ -129,20 +162,23 @@ export default function TenantDashboard() {
                 </CardContent>
             </Card>
 
-            {/* Unread Notifications */}
+            {/* Unread notifications */}
             {notifications.length > 0 && (
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Unread Notifications</CardTitle>
+                <Card className="bg-zinc-900 border-zinc-800">
+                    <CardHeader className="pb-2">
+                        <CardTitle className="text-base text-white">Unread Notifications</CardTitle>
                     </CardHeader>
                     <CardContent>
-                        <div className="space-y-3">
+                        <div className="space-y-1">
                             {notifications.map(n => (
-                                <div key={n.id} className="flex items-start gap-3 py-2 border-b last:border-0">
-                                    <div className="w-2 h-2 rounded-full bg-blue-500 mt-1.5 shrink-0" />
+                                <div
+                                    key={n.id}
+                                    className="flex items-start gap-3 py-3 border-b border-zinc-800 last:border-0"
+                                >
+                                    <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 mt-2 shrink-0" />
                                     <div>
-                                        <p className="text-sm">{n.message}</p>
-                                        <p className="text-xs text-slate-500">
+                                        <p className="text-sm text-zinc-200">{n.message}</p>
+                                        <p className="text-xs text-zinc-500">
                                             {new Date(n.createdAt).toLocaleDateString()}
                                         </p>
                                     </div>

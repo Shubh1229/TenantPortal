@@ -65,7 +65,13 @@ builder.Services.AddDbContext<AuthDbContext>(options =>
 builder.Services.AddScoped<IJwtService, JwtService>();
 builder.Services.AddScoped<ITotpService, TotpService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<ISubscriptionService, SubscriptionService>();
 builder.Services.AddScoped<ISecretsProvider, LocalSecretsProvider>();
+
+// Singleton: one gRPC channel shared across all requests (channels are thread-safe and expensive to create).
+var notificationsGrpcUrl = builder.Configuration["Notifications:GrpcUrl"] ?? "http://localhost:5004";
+builder.Services.AddSingleton<INotificationsGrpcClient>(
+    new NotificationsGrpcClient(notificationsGrpcUrl));
 
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
@@ -76,5 +82,17 @@ app.UseHttpsRedirection();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
+
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<AuthDbContext>();
+    db.Database.Migrate();
+}
+
+using (var scope = app.Services.CreateScope())
+{
+    var context = scope.ServiceProvider.GetRequiredService<AuthDbContext>();
+    await DbSeeder.SeedAsync(context);
+}
 
 app.Run();
