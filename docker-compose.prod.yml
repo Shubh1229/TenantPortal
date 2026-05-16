@@ -1,0 +1,149 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: tenantportal-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - tenantportal-net
+
+  gateway:
+    build:
+      context: .
+      dockerfile: src/Gateway/TenantPortal.Gateway/Dockerfile
+    container_name: tenantportal-gateway
+    restart: unless-stopped
+    environment:
+      - Jwt__SigningKey=${JWT_SIGNING_KEY}
+      - ReverseProxy__Clusters__auth-cluster__Destinations__auth-destination__Address=http://auth:8080
+      - ReverseProxy__Clusters__transactions-cluster__Destinations__transactions-destination__Address=http://transactions:8080
+      - ReverseProxy__Clusters__contracts-cluster__Destinations__contracts-destination__Address=http://contracts:8080
+      - ReverseProxy__Clusters__notifications-cluster__Destinations__notifications-destination__Address=http://notifications:8080
+    depends_on:
+      - auth
+      - transactions
+      - contracts
+      - notifications
+    networks:
+      - tenantportal-net
+
+  auth:
+    build:
+      context: .
+      dockerfile: src/Services/TenantPortal.Auth/Dockerfile
+    container_name: tenantportal-auth
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - Jwt__SigningKey=${JWT_SIGNING_KEY}
+      - ConnectionStrings__Postgres=Host=postgres;Port=5432;Database=tenantportal_auth;Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
+      - Stripe__SecretKey=${STRIPE_SECRET_KEY}
+      - Stripe__WebhookSecret=${STRIPE_WEBHOOK_SECRET}
+      - Totp__EncryptionKey=${TOTP_ENCRYPTION_KEY}
+      - SuperAdmin__Email=${SUPER_ADMIN_EMAIL}
+      - SuperAdmin__Password=${SUPER_ADMIN_PASSWORD}
+      - AzureBlobStorage__ConnectionString=${AZURE_BLOB_CONNECTION_STRING}
+      - AzureCommunicationServices__ConnectionString=${AZURE_ACS_CONNECTION_STRING}
+      - Notifications__GrpcUrl=http://notifications:8080
+      - Frontend__BaseUrl=https://singhresidenthub.com
+    networks:
+      - tenantportal-net
+
+  transactions:
+    build:
+      context: .
+      dockerfile: src/Services/TenantPortal.Transactions/Dockerfile
+    container_name: tenantportal-transactions
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - Jwt__SigningKey=${JWT_SIGNING_KEY}
+      - ConnectionStrings__Postgres=Host=postgres;Port=5432;Database=tenantportal_transactions;Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
+      - Stripe__SecretKey=${STRIPE_SECRET_KEY}
+      - Stripe__WebhookSecret=${STRIPE_WEBHOOK_SECRET}
+      - Notifications__GrpcUrl=http://notifications:8080
+    networks:
+      - tenantportal-net
+
+  contracts:
+    build:
+      context: .
+      dockerfile: src/Services/TenantPortal.Contracts/Dockerfile
+    container_name: tenantportal-contracts
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - Jwt__SigningKey=${JWT_SIGNING_KEY}
+      - ConnectionStrings__Postgres=Host=postgres;Port=5432;Database=tenantportal_contracts;Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
+      - AzureBlobStorage__ConnectionString=${AZURE_BLOB_CONNECTION_STRING}
+    networks:
+      - tenantportal-net
+
+  notifications:
+    build:
+      context: .
+      dockerfile: src/Services/TenantPortal.Notifications/Dockerfile
+    container_name: tenantportal-notifications
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - Jwt__SigningKey=${JWT_SIGNING_KEY}
+      - ConnectionStrings__Postgres=Host=postgres;Port=5432;Database=tenantportal_notifications;Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
+      - AzureCommunicationServices__ConnectionString=${AZURE_ACS_CONNECTION_STRING}
+    networks:
+      - tenantportal-net
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ""
+        NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY}
+    container_name: tenantportal-frontend
+    restart: unless-stopped
+    networks:
+      - tenantportal-net
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: tenantportal-caddy
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    restart: unless-stopped
+    depends_on:
+      - gateway
+      - frontend
+    networks:
+      - tenantportal-net
+
+networks:
+  tenantportal-net:
+
+volumes:
+  postgres-data:
+  caddy-data:
+  caddy-config:
