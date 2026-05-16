@@ -23,9 +23,6 @@ services:
     ports:
       - "5000:8080"
     environment:
-      - AZURE_CLIENT_ID=7b75f4d5-9e83-4371-b9e1-979b3a588d94
-      - AZURE_CLIENT_SECRET=KTm8Q~h4x1EjKS54J6BsF3l_F9llrfqej3FHAcUh
-      - AZURE_TENANT_ID=fbaef6d0-b54b-42aa-9cf4-a9de35e5d0b1  
       - Jwt__SigningKey=91nIByLbGNp91F5OiYa5Xx26geMn8quNQHZY6frSRLM=
       - ReverseProxy__Clusters__auth-cluster__Destinations__auth-destination__Address=http://auth:8080
       - ReverseProxy__Clusters__transactions-cluster__Destinations__transactions-destination__Address=http://transactions:8080
@@ -51,10 +48,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    environment:
-      - AZURE_CLIENT_ID=7b75f4d5-9e83-4371-b9e1-979b3a588d94
-      - AZURE_CLIENT_SECRET=KTm8Q~h4x1EjKS54J6BsF3l_F9llrfqej3FHAcUh
-      - AZURE_TENANT_ID=fbaef6d0-b54b-42aa-9cf4-a9de35e5d0b1  
+    environment: 
       - Jwt__SigningKey=91nIByLbGNp91F5OiYa5Xx26geMn8quNQHZY6frSRLM=
       - ConnectionStrings__Postgres=Host=postgres;Port=5432;Database=tenantportal_auth;Username=postgres;Password=postgres
       - Stripe__SecretKey=sk_test_placeholder
@@ -78,9 +72,6 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      - AZURE_CLIENT_ID=7b75f4d5-9e83-4371-b9e1-979b3a588d94
-      - AZURE_CLIENT_SECRET=KTm8Q~h4x1EjKS54J6BsF3l_F9llrfqej3FHAcUh
-      - AZURE_TENANT_ID=fbaef6d0-b54b-42aa-9cf4-a9de35e5d0b1  
       - Jwt__SigningKey=91nIByLbGNp91F5OiYa5Xx26geMn8quNQHZY6frSRLM=
       - ConnectionStrings__Postgres=Host=postgres;Port=5432;Database=tenantportal_transactions;Username=postgres;Password=postgres
       - Stripe__SecretKey=sk_test_placeholder
@@ -98,9 +89,6 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      - AZURE_CLIENT_ID=7b75f4d5-9e83-4371-b9e1-979b3a588d94
-      - AZURE_CLIENT_SECRET=KTm8Q~h4x1EjKS54J6BsF3l_F9llrfqej3FHAcUh
-      - AZURE_TENANT_ID=fbaef6d0-b54b-42aa-9cf4-a9de35e5d0b1  
       - Jwt__SigningKey=91nIByLbGNp91F5OiYa5Xx26geMn8quNQHZY6frSRLM=
       - ConnectionStrings__Postgres=Host=postgres;Port=5432;Database=tenantportal_contracts;Username=postgres;Password=postgres
       - AzureBlobStorage__ConnectionString=placeholder
@@ -116,9 +104,6 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      - AZURE_CLIENT_ID=7b75f4d5-9e83-4371-b9e1-979b3a588d94
-      - AZURE_CLIENT_SECRET=KTm8Q~h4x1EjKS54J6BsF3l_F9llrfqej3FHAcUh
-      - AZURE_TENANT_ID=fbaef6d0-b54b-42aa-9cf4-a9de35e5d0b1  
       - Jwt__SigningKey=91nIByLbGNp91F5OiYa5Xx26geMn8quNQHZY6frSRLM=
       - ConnectionStrings__Postgres=Host=postgres;Port=5432;Database=tenantportal_notifications;Username=postgres;Password=postgres
       - AzureCommunicationServices__ConnectionString=placeholder
