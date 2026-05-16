@@ -21,6 +21,9 @@
 .claude
 .env.prod
 
+docker-compose.yml
+docker-compose.prod.yml
+
 Media
 # Mono auto generated files
 mono_crash.*

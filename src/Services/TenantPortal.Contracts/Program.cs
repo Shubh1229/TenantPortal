@@ -22,7 +22,7 @@ builder.Services.AddSerilog();
 builder.Services.AddOpenApi();
 
 // Load the JWT signing key at startup so it matches the key used by the Auth service
-var startupSecrets = new AzureVaultSecretsProvider("https://singhrentalhub-vault.vault.azure.net/"); // new LocalSecretsProvider();
+var startupSecrets = new AzureVaultSecretsProvider("https://singhresidenthub-vault.vault.azure.net/"); // new LocalSecretsProvider();
 var jwtSigningKey = startupSecrets.GetSecretAsync(SecretKeys.JwtSigningKey).GetAwaiter().GetResult();
 
 builder.Services.AddAuthentication(options =>
@@ -64,7 +64,8 @@ builder.Services.AddDbContext<ContractDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("Postgres")));
 
 builder.Services.AddScoped<IContractService, ContractService>();
-builder.Services.AddScoped<ISecretsProvider, LocalSecretsProvider>();
+builder.Services.AddSingleton<ISecretsProvider>(
+    new AzureVaultSecretsProvider("https://singhresidenthub-vault.vault.azure.net/"));
 
 builder.Services.AddSingleton(x =>
     new BlobServiceClient(builder.Configuration.GetConnectionString("AzureBlobStorage")));

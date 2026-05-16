@@ -21,7 +21,7 @@ builder.Services.AddSerilog();
 builder.Services.AddOpenApi();
 
 // Load the JWT signing key at startup so it matches the key used by the Auth service
-var startupSecrets = new AzureVaultSecretsProvider("https://singhrentalhub-vault.vault.azure.net/"); // new LocalSecretsProvider();
+var startupSecrets = new AzureVaultSecretsProvider("https://singhresidenthub-vault.vault.azure.net/"); // new LocalSecretsProvider();
 var jwtSigningKey = startupSecrets.GetSecretAsync(SecretKeys.JwtSigningKey).GetAwaiter().GetResult();
 
 builder.Services.AddAuthentication(options =>
@@ -65,7 +65,8 @@ builder.Services.AddDbContext<TransactionDbContext>(options =>
 builder.Services.AddScoped<ITransactionService, TransactionService>();
 builder.Services.AddScoped<IRentScheduleService, RentScheduleService>();
 builder.Services.AddScoped<IStripeService, StripeService>();
-builder.Services.AddScoped<ISecretsProvider, LocalSecretsProvider>();
+builder.Services.AddSingleton<ISecretsProvider>(
+    new AzureVaultSecretsProvider("https://singhresidenthub-vault.vault.azure.net/"));
 builder.Services.AddHostedService<OverduePaymentJob>();
 
 builder.Services.AddControllers();

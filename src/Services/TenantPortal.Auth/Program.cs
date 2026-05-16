@@ -21,7 +21,7 @@ builder.Services.AddSerilog();
 
 // Load the JWT signing key at startup so the key used to sign tokens matches
 // the key used to validate them in all downstream services.
-var startupSecrets = new AzureVaultSecretsProvider("https://singhrentalhub-vault.vault.azure.net/");   // new LocalSecretsProvider();
+var startupSecrets = new AzureVaultSecretsProvider("https://singhresidenthub-vault.vault.azure.net/");   // new LocalSecretsProvider();
 var jwtSigningKey = startupSecrets.GetSecretAsync(SecretKeys.JwtSigningKey).GetAwaiter().GetResult();
 
 builder.Services.AddAuthentication(options =>
@@ -66,7 +66,8 @@ builder.Services.AddScoped<IJwtService, JwtService>();
 builder.Services.AddScoped<ITotpService, TotpService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<ISubscriptionService, SubscriptionService>();
-builder.Services.AddScoped<ISecretsProvider, LocalSecretsProvider>();
+builder.Services.AddSingleton<ISecretsProvider>(
+    new AzureVaultSecretsProvider("https://singhresidenthub-vault.vault.azure.net/"));
 
 // Singleton: one gRPC channel shared across all requests (channels are thread-safe and expensive to create).
 var notificationsGrpcUrl = builder.Configuration["Notifications:GrpcUrl"] ?? "http://localhost:5004";
