@@ -26,6 +26,7 @@ builder.Services.AddAuthentication(options =>
 })
 .AddJwtBearer(options =>
 {
+    options.MapInboundClaims = false;
     options.TokenValidationParameters = new TokenValidationParameters
     {
         ValidateIssuerSigningKey = true,
@@ -45,17 +46,21 @@ builder.Services.AddAuthorization(options =>
     options.AddPolicy(AppConstants.Policies.RequireAdmin, policy =>
         policy.RequireClaim(AppConstants.Claims.UserRole,
             UserRole.Admin.ToString(),
-            UserRole.SuperAdmin.ToString()));
+            UserRole.SuperAdmin.ToString(),
+            UserRole.Tester.ToString()));
 
     options.AddPolicy(AppConstants.Policies.RequireTenant, policy =>
         policy.RequireClaim(AppConstants.Claims.UserRole,
             UserRole.Tenant.ToString(),
             UserRole.Admin.ToString(),
-            UserRole.SuperAdmin.ToString()));
+            UserRole.SuperAdmin.ToString(),
+            UserRole.Tester.ToString()));
 });
 
 builder.Services.AddSingleton<ISecretsProvider>(
     new AzureVaultSecretsProvider("https://singhresidenthub-vault.vault.azure.net/"));
+
+builder.Services.AddHttpClient();
 
 builder.Services.AddReverseProxy()
     .LoadFromConfig(builder.Configuration.GetSection("ReverseProxy"));
@@ -74,9 +79,11 @@ var app = builder.Build();
 
 app.UseHttpsRedirection();
 app.UseCors();
+app.UseSerilogRequestLogging();
 app.UseAuthentication();
 app.UseAuthorization();
 app.UseMiddleware<CorrelationIdMiddleware>();
+app.UseMiddleware<TesterInterceptMiddleware>();
 app.MapReverseProxy();
 
 app.Run();

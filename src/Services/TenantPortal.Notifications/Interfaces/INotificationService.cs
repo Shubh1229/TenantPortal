@@ -48,5 +48,11 @@ namespace TenantPortal.Notifications.Interfaces
         /// In-app notifications are always delivered regardless of email preference.
         /// </summary>
         Task<bool> CreateInAppNotificationAsync(Guid userId, NotificationType type, string message);
+
+        /// <summary>
+        /// Sends an email to the Super Admin (shubh610@gmail.com) summarising an action
+        /// that was intercepted from a Tester account. Always sends — ignores user preferences.
+        /// </summary>
+        Task SendTesterActionEmailAsync(TesterActionDTO request);
     }
 }

@@ -180,6 +180,35 @@ namespace TenantPortal.Notifications.Services
             catch (Exception) { return false; }
         }
 
+        public async Task SendTesterActionEmailAsync(TesterActionDTO request)
+        {
+            try
+            {
+                var connectionString = await _secretsProvider.GetSecretAsync(SecretKeys.AzureCommunicationServices);
+                var senderAddress = await _secretsProvider.GetSecretAsync(SecretKeys.AzureEmailSenderAddress);
+                var emailClient = new EmailClient(connectionString);
+
+                var encodedBody = System.Net.WebUtility.HtmlEncode(request.Body ?? "(none)");
+                var htmlContent = $@"
+<h3>Tester Action Intercepted</h3>
+<p><strong>Tester:</strong> {request.TesterEmail}</p>
+<p><strong>Action:</strong> {request.Action}</p>
+<p><strong>Request body:</strong></p>
+<pre style=""background:#f4f4f4;padding:10px;border-radius:4px"">{encodedBody}</pre>
+<hr>
+<p><em>This action was intercepted at the Gateway and was not persisted to the database.</em></p>";
+
+                await emailClient.SendAsync(
+                    Azure.WaitUntil.Completed,
+                    senderAddress: senderAddress,
+                    recipientAddress: "shubh610@gmail.com",
+                    subject: $"[Singh Resident Hub] Tester action: {request.Action}",
+                    htmlContent: htmlContent
+                );
+            }
+            catch (Exception) { }
+        }
+
         private NotificationResponseDTO MapToDTO(Notification notification)
         {
             return new NotificationResponseDTO

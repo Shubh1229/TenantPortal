@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using TenantPortal.Auth.Interfaces;
 using TenantPortal.Auth.Models;
 using TenantPortal.Shared.Constants;
 using TenantPortal.Shared.Enums;
@@ -11,7 +12,10 @@ namespace TenantPortal.Auth.Data
     /// </summary>
     public static class DbSeeder
     {
-        public static async Task SeedAsync(AuthDbContext context, ISecretsProvider secretsProvider)
+        public static async Task SeedAsync(
+            AuthDbContext context,
+            ISecretsProvider secretsProvider,
+            ITotpEncryptionService totpEncryption)
         {
             if (await context.Users.AnyAsync(u => u.Role == UserRole.SuperAdmin))
                 return;
@@ -25,7 +29,7 @@ namespace TenantPortal.Auth.Data
                 Id = Guid.NewGuid(),
                 Email = email,
                 PasswordHash = BCrypt.Net.BCrypt.HashPassword(password),
-                TotpSecret = totpSecret,
+                TotpSecret = totpEncryption.Encrypt(totpSecret),
                 Role = UserRole.SuperAdmin,
                 IsActive = true,
                 IsDeleted = false,

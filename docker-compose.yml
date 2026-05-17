@@ -31,6 +31,7 @@ services:
       - ReverseProxy__Clusters__transactions-cluster__Destinations__transactions-destination__Address=http://transactions:8080
       - ReverseProxy__Clusters__contracts-cluster__Destinations__contracts-destination__Address=http://contracts:8080
       - ReverseProxy__Clusters__notifications-cluster__Destinations__notifications-destination__Address=http://notifications:8080
+      - Notifications__HttpUrl=http://notifications:8080
     volumes:
       - ./logs:/logs
     depends_on:

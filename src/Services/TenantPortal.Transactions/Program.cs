@@ -29,6 +29,7 @@ builder.Services.AddAuthentication(options =>
 })
 .AddJwtBearer(options =>
 {
+    options.MapInboundClaims = false;
     options.TokenValidationParameters = new TokenValidationParameters
     {
         ValidateIssuerSigningKey = true,
@@ -48,13 +49,15 @@ builder.Services.AddAuthorization(options =>
     options.AddPolicy(AppConstants.Policies.RequireAdmin, policy =>
         policy.RequireClaim(AppConstants.Claims.UserRole,
             UserRole.Admin.ToString(),
-            UserRole.SuperAdmin.ToString()));
+            UserRole.SuperAdmin.ToString(),
+            UserRole.Tester.ToString()));
 
     options.AddPolicy(AppConstants.Policies.RequireTenant, policy =>
         policy.RequireClaim(AppConstants.Claims.UserRole,
             UserRole.Tenant.ToString(),
             UserRole.Admin.ToString(),
-            UserRole.SuperAdmin.ToString()));
+            UserRole.SuperAdmin.ToString(),
+            UserRole.Tester.ToString()));
 });
 
 builder.Services.AddDbContext<TransactionDbContext>(options =>
@@ -72,6 +75,7 @@ builder.Services.AddControllers();
 var app = builder.Build();
 
 app.UseHttpsRedirection();
+app.UseSerilogRequestLogging();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();

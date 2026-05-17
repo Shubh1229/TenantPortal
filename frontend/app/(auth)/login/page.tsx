@@ -66,7 +66,7 @@ export default function LoginPage() {
                     <div className="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center">
                         <Building2 size={20} className="text-white" />
                     </div>
-                    <span className="text-lg font-semibold text-white">Tenant Portal</span>
+                    <span className="text-lg font-semibold text-white">Singh Resident Hub</span>
                 </div>
 
                 <div>
@@ -95,7 +95,7 @@ export default function LoginPage() {
                         <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center">
                             <Building2 size={16} className="text-white" />
                         </div>
-                        <span className="font-semibold text-white">Tenant Portal</span>
+                        <span className="font-semibold text-white">Singh Resident Hub</span>
                     </div>
 
                     <div>

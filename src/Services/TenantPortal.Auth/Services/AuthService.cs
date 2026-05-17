@@ -17,6 +17,7 @@ namespace TenantPortal.Auth.Services
     {
         private readonly IJwtService _jwtService;
         private readonly ITotpService _totpService;
+        private readonly ITotpEncryptionService _totpEncryption;
         private readonly AuthDbContext _context;
         private readonly ISecretsProvider _secretsProvider;
         private readonly INotificationsGrpcClient _notificationsGrpc;
@@ -30,6 +31,7 @@ namespace TenantPortal.Auth.Services
         public AuthService(
             IJwtService jwtService,
             ITotpService totpService,
+            ITotpEncryptionService totpEncryption,
             AuthDbContext context,
             ISecretsProvider secretsProvider,
             INotificationsGrpcClient notificationsGrpc,
@@ -37,6 +39,7 @@ namespace TenantPortal.Auth.Services
         {
             _jwtService = jwtService;
             _totpService = totpService;
+            _totpEncryption = totpEncryption;
             _context = context;
             _secretsProvider = secretsProvider;
             _notificationsGrpc = notificationsGrpc;
@@ -68,7 +71,7 @@ namespace TenantPortal.Auth.Services
             var user = await _context.Users
                 .FirstOrDefaultAsync(u => u.Id == userId && u.IsActive && !u.IsDeleted);
 
-            if (user == null || !_totpService.ValidateTotpToken(user.TotpSecret, totpCode))
+            if (user == null || !_totpService.ValidateTotpToken(_totpEncryption.Decrypt(user.TotpSecret), totpCode))
                 return null;
 
             var refreshToken = _jwtService.GenerateRefreshToken();
@@ -150,7 +153,7 @@ namespace TenantPortal.Auth.Services
                 Role = inviteRecord.Role,
                 Email = inviteRecord.Email,
                 PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password),
-                TotpSecret = totpSecret,
+                TotpSecret = _totpEncryption.Encrypt(totpSecret),
                 IsActive = true,
                 IsDeleted = false,
                 InvitedBy = inviteRecord.CreatedBy,

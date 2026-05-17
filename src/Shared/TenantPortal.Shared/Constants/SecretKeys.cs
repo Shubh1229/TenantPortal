@@ -40,5 +40,8 @@ namespace TenantPortal.Shared.Constants
 
         /// <summary>Fixed TOTP secret for the SuperAdmin account. Stored in Key Vault so it survives DB wipes.</summary>
         public const string SuperAdminTotpSecret = "SuperAdmin__TotpSecret";
+
+        /// <summary>Base64-encoded 32-byte AES-256 key used to encrypt TOTP secrets at rest.</summary>
+        public const string TotpEncryptionKey = "Totp__EncryptionKey";
     }
 }
