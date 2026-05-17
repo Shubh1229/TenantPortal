@@ -13,9 +13,7 @@ using TenantPortal.Transactions.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
-Log.Logger = new LoggerConfiguration()
-    .WriteTo.Console()
-    .CreateLogger();
+Log.Logger = LoggingConfig.CreateDefault("transactions").CreateLogger();
 
 builder.Services.AddSerilog();
 builder.Services.AddOpenApi();

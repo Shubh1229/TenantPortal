@@ -10,9 +10,7 @@ using TenantPortal.Shared.Interfaces;
 
 var builder = WebApplication.CreateBuilder(args);
 
-Log.Logger = new LoggerConfiguration()
-    .WriteTo.Console()
-    .CreateLogger();
+Log.Logger = LoggingConfig.CreateDefault("gateway").CreateLogger();
 
 builder.Services.AddSerilog();
 

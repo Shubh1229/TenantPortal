@@ -53,11 +53,12 @@ namespace TenantPortal.Notifications.Services
                     <p>Or copy this URL: {registrationUrl}</p>";
 
                 var connectionString = await _secretsProvider.GetSecretAsync(SecretKeys.AzureCommunicationServices);
+                var senderAddress = await _secretsProvider.GetSecretAsync(SecretKeys.AzureEmailSenderAddress);
                 var emailClient = new EmailClient(connectionString);
 
                 await emailClient.SendAsync(
                     Azure.WaitUntil.Completed,
-                    senderAddress: "noreply@tenantportal.com",
+                    senderAddress: senderAddress,
                     recipientAddress: request.ToEmail,
                     subject: subject,
                     htmlContent: body);

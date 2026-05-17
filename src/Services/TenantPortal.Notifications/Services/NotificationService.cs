@@ -133,13 +133,14 @@ namespace TenantPortal.Notifications.Services
             try
             {
                 var connectionString = await _secretsProvider.GetSecretAsync(SecretKeys.AzureCommunicationServices);
+                var senderAddress = await _secretsProvider.GetSecretAsync(SecretKeys.AzureEmailSenderAddress);
                 var emailClient = new EmailClient(connectionString);
                 var preference = await _context.NotificationPreferences
                     .FirstOrDefaultAsync(p => p.UserId == userId);
                 if (preference == null || !preference.EmailEnabled) return true;
                 await emailClient.SendAsync(
                     Azure.WaitUntil.Completed,
-                    senderAddress: "noreply@tenantportal.com",
+                    senderAddress: senderAddress,
                     recipientAddress: email,
                     subject: subject,
                     htmlContent: body

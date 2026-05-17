@@ -25,21 +25,19 @@ services:
     environment:
       - AZURE_CLIENT_ID=7b75f4d5-9e83-4371-b9e1-979b3a588d94
       - AZURE_CLIENT_SECRET=KTm8Q~h4x1EjKS54J6BsF3l_F9llrfqej3FHAcUh
-      - AZURE_TENANT_ID=fbaef6d0-b54b-42aa-9cf4-a9de35e5d0b1  
+      - AZURE_TENANT_ID=fbaef6d0-b54b-42aa-9cf4-a9de35e5d0b1
       - Jwt__SigningKey=91nIByLbGNp91F5OiYa5Xx26geMn8quNQHZY6frSRLM=
       - ReverseProxy__Clusters__auth-cluster__Destinations__auth-destination__Address=http://auth:8080
       - ReverseProxy__Clusters__transactions-cluster__Destinations__transactions-destination__Address=http://transactions:8080
       - ReverseProxy__Clusters__contracts-cluster__Destinations__contracts-destination__Address=http://contracts:8080
       - ReverseProxy__Clusters__notifications-cluster__Destinations__notifications-destination__Address=http://notifications:8080
+    volumes:
+      - ./logs:/logs
     depends_on:
-      auth:
-        condition: service_started
-      transactions:
-        condition: service_started
-      contracts:
-        condition: service_started
-      notifications:
-        condition: service_started
+      - auth
+      - transactions
+      - contracts
+      - notifications
 
   auth:
     build:
@@ -54,18 +52,16 @@ services:
     environment:
       - AZURE_CLIENT_ID=7b75f4d5-9e83-4371-b9e1-979b3a588d94
       - AZURE_CLIENT_SECRET=KTm8Q~h4x1EjKS54J6BsF3l_F9llrfqej3FHAcUh
-      - AZURE_TENANT_ID=fbaef6d0-b54b-42aa-9cf4-a9de35e5d0b1  
+      - AZURE_TENANT_ID=fbaef6d0-b54b-42aa-9cf4-a9de35e5d0b1
       - Jwt__SigningKey=91nIByLbGNp91F5OiYa5Xx26geMn8quNQHZY6frSRLM=
       - ConnectionStrings__Postgres=Host=postgres;Port=5432;Database=tenantportal_auth;Username=postgres;Password=postgres
-      - Stripe__SecretKey=sk_test_placeholder
-      - Stripe__WebhookSecret=whsec_placeholder
       - Totp__EncryptionKey=91nIByLbGNp91F5OiYa5Xx26geMn8quNQHZY6frSRLM=
       - SuperAdmin__Email=shubh610@gmail.com
       - SuperAdmin__Password=Yorkshire$1229
-      - AzureBlobStorage__ConnectionString=placeholder
-      - AzureCommunicationServices__ConnectionString=placeholder
       - Notifications__GrpcUrl=http://notifications:8080
       - Frontend__BaseUrl=http://localhost:3000
+    volumes:
+      - ./logs:/logs
 
   transactions:
     build:
@@ -80,12 +76,12 @@ services:
     environment:
       - AZURE_CLIENT_ID=7b75f4d5-9e83-4371-b9e1-979b3a588d94
       - AZURE_CLIENT_SECRET=KTm8Q~h4x1EjKS54J6BsF3l_F9llrfqej3FHAcUh
-      - AZURE_TENANT_ID=fbaef6d0-b54b-42aa-9cf4-a9de35e5d0b1  
+      - AZURE_TENANT_ID=fbaef6d0-b54b-42aa-9cf4-a9de35e5d0b1
       - Jwt__SigningKey=91nIByLbGNp91F5OiYa5Xx26geMn8quNQHZY6frSRLM=
       - ConnectionStrings__Postgres=Host=postgres;Port=5432;Database=tenantportal_transactions;Username=postgres;Password=postgres
-      - Stripe__SecretKey=sk_test_placeholder
-      - Stripe__WebhookSecret=whsec_placeholder
       - Notifications__GrpcUrl=http://notifications:8080
+    volumes:
+      - ./logs:/logs
 
   contracts:
     build:
@@ -100,10 +96,11 @@ services:
     environment:
       - AZURE_CLIENT_ID=7b75f4d5-9e83-4371-b9e1-979b3a588d94
       - AZURE_CLIENT_SECRET=KTm8Q~h4x1EjKS54J6BsF3l_F9llrfqej3FHAcUh
-      - AZURE_TENANT_ID=fbaef6d0-b54b-42aa-9cf4-a9de35e5d0b1  
+      - AZURE_TENANT_ID=fbaef6d0-b54b-42aa-9cf4-a9de35e5d0b1
       - Jwt__SigningKey=91nIByLbGNp91F5OiYa5Xx26geMn8quNQHZY6frSRLM=
       - ConnectionStrings__Postgres=Host=postgres;Port=5432;Database=tenantportal_contracts;Username=postgres;Password=postgres
-      - AzureBlobStorage__ConnectionString=placeholder
+    volumes:
+      - ./logs:/logs
 
   notifications:
     build:
@@ -118,10 +115,11 @@ services:
     environment:
       - AZURE_CLIENT_ID=7b75f4d5-9e83-4371-b9e1-979b3a588d94
       - AZURE_CLIENT_SECRET=KTm8Q~h4x1EjKS54J6BsF3l_F9llrfqej3FHAcUh
-      - AZURE_TENANT_ID=fbaef6d0-b54b-42aa-9cf4-a9de35e5d0b1  
+      - AZURE_TENANT_ID=fbaef6d0-b54b-42aa-9cf4-a9de35e5d0b1
       - Jwt__SigningKey=91nIByLbGNp91F5OiYa5Xx26geMn8quNQHZY6frSRLM=
       - ConnectionStrings__Postgres=Host=postgres;Port=5432;Database=tenantportal_notifications;Username=postgres;Password=postgres
-      - AzureCommunicationServices__ConnectionString=placeholder
+    volumes:
+      - ./logs:/logs
 
 volumes:
   postgres-data:

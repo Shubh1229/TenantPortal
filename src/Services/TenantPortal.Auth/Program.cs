@@ -13,9 +13,7 @@ using TenantPortal.Shared.Interfaces;
 
 var builder = WebApplication.CreateBuilder(args);
 
-Log.Logger = new LoggerConfiguration()
-    .WriteTo.Console()
-    .CreateLogger();
+Log.Logger = LoggingConfig.CreateDefault("auth").CreateLogger();
 
 builder.Services.AddSerilog();
 
@@ -93,7 +91,8 @@ using (var scope = app.Services.CreateScope())
 using (var scope = app.Services.CreateScope())
 {
     var context = scope.ServiceProvider.GetRequiredService<AuthDbContext>();
-    await DbSeeder.SeedAsync(context);
+    var secrets = scope.ServiceProvider.GetRequiredService<ISecretsProvider>();
+    await DbSeeder.SeedAsync(context, secrets);
 }
 
 app.Run();

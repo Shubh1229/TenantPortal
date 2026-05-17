@@ -14,16 +14,15 @@ using TenantPortal.Shared.Interfaces;
 
 var builder = WebApplication.CreateBuilder(args);
 
-Log.Logger = new LoggerConfiguration()
-    .WriteTo.Console()
-    .CreateLogger();
+Log.Logger = LoggingConfig.CreateDefault("contracts").CreateLogger();
 
 builder.Services.AddSerilog();
 builder.Services.AddOpenApi();
 
-// Load the JWT signing key at startup so it matches the key used by the Auth service
+// Load secrets from Key Vault at startup — JWT key and blob connection string must be available before the DI container builds.
 var startupSecrets = new AzureVaultSecretsProvider("https://singhresidenthub-vault.vault.azure.net/"); // new LocalSecretsProvider();
 var jwtSigningKey = startupSecrets.GetSecretAsync(SecretKeys.JwtSigningKey).GetAwaiter().GetResult();
+var blobConnectionString = startupSecrets.GetSecretAsync(SecretKeys.AzureBlobConnectionString).GetAwaiter().GetResult();
 
 builder.Services.AddAuthentication(options =>
 {
@@ -67,8 +66,7 @@ builder.Services.AddScoped<IContractService, ContractService>();
 builder.Services.AddSingleton<ISecretsProvider>(
     new AzureVaultSecretsProvider("https://singhresidenthub-vault.vault.azure.net/"));
 
-builder.Services.AddSingleton(x =>
-    new BlobServiceClient(builder.Configuration.GetConnectionString("AzureBlobStorage")));
+builder.Services.AddSingleton(_ => new BlobServiceClient(blobConnectionString));
 
 builder.Services.AddControllers();
 

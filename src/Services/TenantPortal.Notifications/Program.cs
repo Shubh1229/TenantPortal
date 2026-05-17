@@ -13,9 +13,7 @@ using TenantPortal.Shared.Interfaces;
 
 var builder = WebApplication.CreateBuilder(args);
 
-Log.Logger = new LoggerConfiguration()
-    .WriteTo.Console()
-    .CreateLogger();
+Log.Logger = LoggingConfig.CreateDefault("notifications").CreateLogger();
 
 builder.Services.AddSerilog();
 builder.Services.AddOpenApi();
