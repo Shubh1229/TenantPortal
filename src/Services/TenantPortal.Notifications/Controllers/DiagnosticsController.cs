@@ -11,7 +11,7 @@ namespace TenantPortal.Notifications.Controllers
     /// </summary>
     [ApiController]
     [Route("api/notifications/diagnostics")]
-    [Authorize(Policy = AppConstants.Policies.RequireSuperAdmin)]
+    [Authorize]
     public class DiagnosticsController : ControllerBase
     {
         private readonly ISecretsProvider _secretsProvider;
