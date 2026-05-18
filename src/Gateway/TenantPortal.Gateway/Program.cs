@@ -10,15 +10,13 @@ using TenantPortal.Shared.Interfaces;
 
 var builder = WebApplication.CreateBuilder(args);
 
-Log.Logger = new LoggerConfiguration()
-    .WriteTo.Console()
-    .CreateLogger();
+Log.Logger = LoggingConfig.CreateDefault("gateway").CreateLogger();
 
 builder.Services.AddSerilog();
 
 // Load the JWT signing key at startup so it matches the key used by the Auth service.
 // The Gateway validates tokens before forwarding; downstream services also validate independently.
-var startupSecrets = new LocalSecretsProvider();
+var startupSecrets = new AzureVaultSecretsProvider("https://singhresidenthub-vault.vault.azure.net/");  //new LocalSecretsProvider();
 var jwtSigningKey = startupSecrets.GetSecretAsync(SecretKeys.JwtSigningKey).GetAwaiter().GetResult();
 
 builder.Services.AddAuthentication(options =>
@@ -28,6 +26,7 @@ builder.Services.AddAuthentication(options =>
 })
 .AddJwtBearer(options =>
 {
+    options.MapInboundClaims = false;
     options.TokenValidationParameters = new TokenValidationParameters
     {
         ValidateIssuerSigningKey = true,
@@ -47,16 +46,21 @@ builder.Services.AddAuthorization(options =>
     options.AddPolicy(AppConstants.Policies.RequireAdmin, policy =>
         policy.RequireClaim(AppConstants.Claims.UserRole,
             UserRole.Admin.ToString(),
-            UserRole.SuperAdmin.ToString()));
+            UserRole.SuperAdmin.ToString(),
+            UserRole.Tester.ToString()));
 
     options.AddPolicy(AppConstants.Policies.RequireTenant, policy =>
         policy.RequireClaim(AppConstants.Claims.UserRole,
             UserRole.Tenant.ToString(),
             UserRole.Admin.ToString(),
-            UserRole.SuperAdmin.ToString()));
+            UserRole.SuperAdmin.ToString(),
+            UserRole.Tester.ToString()));
 });
 
-builder.Services.AddScoped<ISecretsProvider, LocalSecretsProvider>();
+builder.Services.AddSingleton<ISecretsProvider>(
+    new AzureVaultSecretsProvider("https://singhresidenthub-vault.vault.azure.net/"));
+
+builder.Services.AddHttpClient();
 
 builder.Services.AddReverseProxy()
     .LoadFromConfig(builder.Configuration.GetSection("ReverseProxy"));
@@ -75,9 +79,11 @@ var app = builder.Build();
 
 app.UseHttpsRedirection();
 app.UseCors();
+app.UseSerilogRequestLogging();
 app.UseAuthentication();
 app.UseAuthorization();
 app.UseMiddleware<CorrelationIdMiddleware>();
+app.UseMiddleware<TesterInterceptMiddleware>();
 app.MapReverseProxy();
 
 app.Run();

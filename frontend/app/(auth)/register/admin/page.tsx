@@ -64,7 +64,7 @@ function AdminRegisterForm() {
                     <div className="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center">
                         <Building2 size={20} className="text-white" />
                     </div>
-                    <span className="text-lg font-semibold text-white">Tenant Portal</span>
+                    <span className="text-lg font-semibold text-white">Singh Resident Hub</span>
                 </div>
 
                 <div className="space-y-6">

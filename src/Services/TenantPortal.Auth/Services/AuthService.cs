@@ -17,6 +17,7 @@ namespace TenantPortal.Auth.Services
     {
         private readonly IJwtService _jwtService;
         private readonly ITotpService _totpService;
+        private readonly ITotpEncryptionService _totpEncryption;
         private readonly AuthDbContext _context;
         private readonly ISecretsProvider _secretsProvider;
         private readonly INotificationsGrpcClient _notificationsGrpc;
@@ -30,6 +31,7 @@ namespace TenantPortal.Auth.Services
         public AuthService(
             IJwtService jwtService,
             ITotpService totpService,
+            ITotpEncryptionService totpEncryption,
             AuthDbContext context,
             ISecretsProvider secretsProvider,
             INotificationsGrpcClient notificationsGrpc,
@@ -37,6 +39,7 @@ namespace TenantPortal.Auth.Services
         {
             _jwtService = jwtService;
             _totpService = totpService;
+            _totpEncryption = totpEncryption;
             _context = context;
             _secretsProvider = secretsProvider;
             _notificationsGrpc = notificationsGrpc;
@@ -68,7 +71,7 @@ namespace TenantPortal.Auth.Services
             var user = await _context.Users
                 .FirstOrDefaultAsync(u => u.Id == userId && u.IsActive && !u.IsDeleted);
 
-            if (user == null || !_totpService.ValidateTotpToken(user.TotpSecret, totpCode))
+            if (user == null || !_totpService.ValidateTotpToken(_totpEncryption.Decrypt(user.TotpSecret), totpCode))
                 return null;
 
             var refreshToken = _jwtService.GenerateRefreshToken();
@@ -138,19 +141,45 @@ namespace TenantPortal.Auth.Services
             if (inviteRecord == null || inviteRecord.Used || inviteRecord.ExpiresAt < DateTime.UtcNow)
                 return null;
 
-            // Prevent duplicate accounts for the same email
-            if (await _context.Users.AnyAsync(u => u.Email == inviteRecord.Email))
-                return null;
-
             var totpSecret = _totpService.GenerateSecret();
 
+            // Check for valid upgrade path (Tester→Admin/Tenant, Tenant→Admin)
+            var existingUser = await _context.Users
+                .FirstOrDefaultAsync(u => u.Email == inviteRecord.Email && !u.IsDeleted);
+
+            if (existingUser != null)
+            {
+                bool isValidUpgrade =
+                    (existingUser.Role == UserRole.Tester && inviteRecord.Role == UserRole.Admin) ||
+                    (existingUser.Role == UserRole.Tester && inviteRecord.Role == UserRole.Tenant) ||
+                    (existingUser.Role == UserRole.Tenant && inviteRecord.Role == UserRole.Admin);
+
+                if (!isValidUpgrade) return null;
+
+                // Upgrade: update role, password, and TOTP. Old sessions expire naturally.
+                existingUser.Role = inviteRecord.Role;
+                existingUser.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password);
+                existingUser.TotpSecret = _totpEncryption.Encrypt(totpSecret);
+                existingUser.UpdatedAt = DateTime.UtcNow;
+
+                inviteRecord.Used = true;
+                await _context.SaveChangesAsync();
+
+                return new TotpSetupResponseDTO
+                {
+                    ManualEntryKey = totpSecret,
+                    QrCode = _totpService.GenerateQrCode(totpSecret, inviteRecord.Email)
+                };
+            }
+
+            // Normal registration — new user
             await _context.Users.AddAsync(new User
             {
                 Id = Guid.NewGuid(),
                 Role = inviteRecord.Role,
                 Email = inviteRecord.Email,
                 PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password),
-                TotpSecret = totpSecret,
+                TotpSecret = _totpEncryption.Encrypt(totpSecret),
                 IsActive = true,
                 IsDeleted = false,
                 InvitedBy = inviteRecord.CreatedBy,
@@ -169,19 +198,48 @@ namespace TenantPortal.Auth.Services
         }
 
         /// <inheritdoc/>
-        public async Task<bool> SendInviteAsync(InviteRequestDTO request, Guid createdBy)
+        public async Task<(bool Success, string? Error)> SendInviteAsync(InviteRequestDTO request, Guid createdBy)
         {
-            // Reject if the email already belongs to a registered user
-            if (await _context.Users.AnyAsync(u => u.Email == request.Email && !u.IsDeleted))
-                return false;
+            // Block if a valid (unused, unexpired) invite already exists for this email
+            var hasPendingInvite = await _context.InviteTokens.AnyAsync(t =>
+                t.Email == request.Email && !t.Used && t.ExpiresAt > DateTime.UtcNow);
+            if (hasPendingInvite)
+                return (false, "An invite is already pending for this email address.");
+
+            // Check if the email belongs to an existing user and enforce upgrade rules
+            var existingUser = await _context.Users
+                .FirstOrDefaultAsync(u => u.Email == request.Email && !u.IsDeleted);
+
+            if (existingUser != null)
+            {
+                // Allowed upgrade paths: Tester→Admin, Tester→Tenant, Tenant→Admin
+                bool isValidUpgrade =
+                    (existingUser.Role == UserRole.Tester && request.Role == UserRole.Admin) ||
+                    (existingUser.Role == UserRole.Tester && request.Role == UserRole.Tenant) ||
+                    (existingUser.Role == UserRole.Tenant && request.Role == UserRole.Admin);
+
+                if (!isValidUpgrade)
+                {
+                    return (existingUser.Role) switch
+                    {
+                        UserRole.SuperAdmin or UserRole.Admin =>
+                            (false, "This email is already registered as an Admin."),
+                        UserRole.Tenant =>
+                            (false, "This user is already a Tenant. Send an Admin invite to upgrade them."),
+                        UserRole.Tester =>
+                            (false, "This user is already a Tester. Send an Admin or Tenant invite to upgrade them."),
+                        _ => (false, "This email is already registered in the system.")
+                    };
+                }
+            }
 
             var creator = await _context.Users.FirstOrDefaultAsync(u => u.Id == createdBy && !u.IsDeleted);
             if (creator == null || creator.Role == UserRole.Tenant)
-                return false;
+                return (false, "You do not have permission to send invites.");
 
             // SaaS tenant limit: Admins on a paid plan can only invite up to MaxTenants tenants.
-            // MaxTenants == null means unlimited (SuperAdmin and legacy personal-use admins).
-            if (creator.Role == UserRole.Admin && creator.MaxTenants.HasValue)
+            if (creator.Role == UserRole.Admin && creator.MaxTenants.HasValue &&
+                request.Role == UserRole.Tenant)
             {
                 var activeTenantCount = await _context.Users.CountAsync(u =>
                     u.InvitedBy == createdBy &&
@@ -190,7 +248,7 @@ namespace TenantPortal.Auth.Services
                     !u.IsDeleted);
 
                 if (activeTenantCount >= creator.MaxTenants.Value)
-                    return false;
+                    return (false, "You have reached your maximum tenant limit for your current plan.");
             }
 
             var plainToken = _jwtService.GenerateRefreshToken();
@@ -213,7 +271,7 @@ namespace TenantPortal.Auth.Services
             await _notificationsGrpc.SendInviteEmailAsync(
                 request.Email, plainToken, request.Role.ToString(), frontendBaseUrl);
 
-            return true;
+            return (true, null);
         }
 
         /// <summary>

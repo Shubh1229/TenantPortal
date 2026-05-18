@@ -82,9 +82,9 @@ namespace TenantPortal.Auth.Controllers
             var (userId, _) = GetUserIdAndRole();
             if (userId == null) return BadRequest("Invalid user ID in token.");
 
-            var result = await _authService.SendInviteAsync(request, userId.Value);
-            if (!result) return BadRequest("Failed to send invite. The email may already be registered.");
-            return Ok("Invite sent successfully.");
+            var (success, error) = await _authService.SendInviteAsync(request, userId.Value);
+            if (!success) return BadRequest(new { error });
+            return Ok(new { success = true });
         }
 
         /// <summary>

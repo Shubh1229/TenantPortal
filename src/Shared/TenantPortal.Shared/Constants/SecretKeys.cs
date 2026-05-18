@@ -29,7 +29,19 @@ namespace TenantPortal.Shared.Constants
         /// </summary>
         public const string StripeSubscriptionWebhookSecret = "Stripe__SubscriptionWebhookSecret";
 
+        /// <summary>Azure Blob Storage connection string used by the Contracts service to store lease PDFs.</summary>
+        public const string AzureBlobConnectionString = "AzureBlobStorage__ConnectionString";
+
+        /// <summary>Sender address used for outbound emails via Azure Communication Services (e.g. DoNotReply@xxx.azurecomm.net).</summary>
+        public const string AzureEmailSenderAddress = "AzureEmail__SenderAddress";
+
         public const string SuperAdminEmail = "SuperAdmin__Email";
         public const string SuperAdminPassword = "SuperAdmin__Password";
+
+        /// <summary>Fixed TOTP secret for the SuperAdmin account. Stored in Key Vault so it survives DB wipes.</summary>
+        public const string SuperAdminTotpSecret = "SuperAdmin__TotpSecret";
+
+        /// <summary>Base64-encoded 32-byte AES-256 key used to encrypt TOTP secrets at rest.</summary>
+        public const string TotpEncryptionKey = "Totp__EncryptionKey";
     }
 }

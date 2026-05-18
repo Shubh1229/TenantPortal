@@ -1,8 +1,9 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
+using TenantPortal.Auth.Interfaces;
 using TenantPortal.Auth.Models;
-using TenantPortal.Shared.Enums;
-using TenantPortal.Shared.Helpers;
 using TenantPortal.Shared.Constants;
+using TenantPortal.Shared.Enums;
+using TenantPortal.Shared.Interfaces;
 
 namespace TenantPortal.Auth.Data
 {
@@ -11,25 +12,24 @@ namespace TenantPortal.Auth.Data
     /// </summary>
     public static class DbSeeder
     {
-        public static async Task SeedAsync(AuthDbContext context)
+        public static async Task SeedAsync(
+            AuthDbContext context,
+            ISecretsProvider secretsProvider,
+            ITotpEncryptionService totpEncryption)
         {
-            // Only seed if no super admin exists
             if (await context.Users.AnyAsync(u => u.Role == UserRole.SuperAdmin))
                 return;
 
-            var secretsProvider = new LocalSecretsProvider();
             var email = await secretsProvider.GetSecretAsync(SecretKeys.SuperAdminEmail);
             var password = await secretsProvider.GetSecretAsync(SecretKeys.SuperAdminPassword);
-
-            var totpService = new TenantPortal.Auth.Services.TotpService();
-            var totpSecret = totpService.GenerateSecret();
+            var totpSecret = await secretsProvider.GetSecretAsync(SecretKeys.SuperAdminTotpSecret);
 
             var superAdmin = new User
             {
                 Id = Guid.NewGuid(),
                 Email = email,
                 PasswordHash = BCrypt.Net.BCrypt.HashPassword(password),
-                TotpSecret = totpSecret,
+                TotpSecret = totpEncryption.Encrypt(totpSecret),
                 Role = UserRole.SuperAdmin,
                 IsActive = true,
                 IsDeleted = false,
@@ -42,8 +42,7 @@ namespace TenantPortal.Auth.Data
 
             Console.WriteLine("=== SUPER ADMIN SEEDED ===");
             Console.WriteLine($"Email: {email}");
-            Console.WriteLine($"TOTP Secret: {totpSecret}");
-            Console.WriteLine("Scan the TOTP secret into your authenticator app.");
+            Console.WriteLine("TOTP secret loaded from Key Vault — scan it into your authenticator if not already done.");
             Console.WriteLine("==========================");
         }
     }

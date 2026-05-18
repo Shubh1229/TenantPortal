@@ -14,16 +14,15 @@ using TenantPortal.Shared.Interfaces;
 
 var builder = WebApplication.CreateBuilder(args);
 
-Log.Logger = new LoggerConfiguration()
-    .WriteTo.Console()
-    .CreateLogger();
+Log.Logger = LoggingConfig.CreateDefault("contracts").CreateLogger();
 
 builder.Services.AddSerilog();
 builder.Services.AddOpenApi();
 
-// Load the JWT signing key at startup so it matches the key used by the Auth service
-var startupSecrets = new LocalSecretsProvider();
+// Load secrets from Key Vault at startup — JWT key and blob connection string must be available before the DI container builds.
+var startupSecrets = new AzureVaultSecretsProvider("https://singhresidenthub-vault.vault.azure.net/"); // new LocalSecretsProvider();
 var jwtSigningKey = startupSecrets.GetSecretAsync(SecretKeys.JwtSigningKey).GetAwaiter().GetResult();
+var blobConnectionString = startupSecrets.GetSecretAsync(SecretKeys.AzureBlobConnectionString).GetAwaiter().GetResult();
 
 builder.Services.AddAuthentication(options =>
 {
@@ -32,6 +31,7 @@ builder.Services.AddAuthentication(options =>
 })
 .AddJwtBearer(options =>
 {
+    options.MapInboundClaims = false;
     options.TokenValidationParameters = new TokenValidationParameters
     {
         ValidateIssuerSigningKey = true,
@@ -51,29 +51,32 @@ builder.Services.AddAuthorization(options =>
     options.AddPolicy(AppConstants.Policies.RequireAdmin, policy =>
         policy.RequireClaim(AppConstants.Claims.UserRole,
             UserRole.Admin.ToString(),
-            UserRole.SuperAdmin.ToString()));
+            UserRole.SuperAdmin.ToString(),
+            UserRole.Tester.ToString()));
 
     options.AddPolicy(AppConstants.Policies.RequireTenant, policy =>
         policy.RequireClaim(AppConstants.Claims.UserRole,
             UserRole.Tenant.ToString(),
             UserRole.Admin.ToString(),
-            UserRole.SuperAdmin.ToString()));
+            UserRole.SuperAdmin.ToString(),
+            UserRole.Tester.ToString()));
 });
 
 builder.Services.AddDbContext<ContractDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("Postgres")));
 
 builder.Services.AddScoped<IContractService, ContractService>();
-builder.Services.AddScoped<ISecretsProvider, LocalSecretsProvider>();
+builder.Services.AddSingleton<ISecretsProvider>(
+    new AzureVaultSecretsProvider("https://singhresidenthub-vault.vault.azure.net/"));
 
-builder.Services.AddSingleton(x =>
-    new BlobServiceClient(builder.Configuration.GetConnectionString("AzureBlobStorage")));
+builder.Services.AddSingleton(_ => new BlobServiceClient(blobConnectionString));
 
 builder.Services.AddControllers();
 
 var app = builder.Build();
 
 app.UseHttpsRedirection();
+app.UseSerilogRequestLogging();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();

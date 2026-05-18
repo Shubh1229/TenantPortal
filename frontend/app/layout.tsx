@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-    title: "Tenant Portal",
+    title: "Singh Resident Hub",
     description: "Property management portal",
 };
 

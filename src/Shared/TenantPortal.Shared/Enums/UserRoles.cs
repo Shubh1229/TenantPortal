@@ -13,6 +13,13 @@ namespace TenantPortal.Shared.Enums
         Admin,
 
         /// <summary>Renter. Created by Admin or Super Admin via the invite flow.</summary>
-        Tenant
+        Tenant,
+
+        /// <summary>
+        /// Read-only test account with Admin-level access. Write operations are intercepted
+        /// at the Gateway, logged, and emailed to the Super Admin instead of being persisted.
+        /// Cannot send invites.
+        /// </summary>
+        Tester
     }
 }

@@ -44,20 +44,22 @@ namespace TenantPortal.Notifications.Services
             {
                 var registrationUrl = $"{request.FrontendBaseUrl}/register?token={request.InviteToken}";
 
-                var subject = "You've been invited to Tenant Portal";
+                var subject = "You've been invited to Singh Resident Hub";
                 var body = $@"
-                    <h2>Welcome to Tenant Portal</h2>
+                    <h2>Welcome to Singh Resident Hub</h2>
                     <p>You have been invited as a <strong>{request.Role}</strong>.</p>
                     <p>Click the link below to complete your registration. This link expires in 48 hours.</p>
                     <p><a href=""{registrationUrl}"">Complete Registration</a></p>
                     <p>Or copy this URL: {registrationUrl}</p>";
 
                 var connectionString = await _secretsProvider.GetSecretAsync(SecretKeys.AzureCommunicationServices);
+                var senderAddress = await _secretsProvider.GetSecretAsync(SecretKeys.AzureEmailSenderAddress);
                 var emailClient = new EmailClient(connectionString);
 
+                // WaitUntil.Started: accept the send request and return immediately without polling for delivery.
                 await emailClient.SendAsync(
-                    Azure.WaitUntil.Completed,
-                    senderAddress: "noreply@tenantportal.com",
+                    Azure.WaitUntil.Started,
+                    senderAddress: senderAddress,
                     recipientAddress: request.ToEmail,
                     subject: subject,
                     htmlContent: body);

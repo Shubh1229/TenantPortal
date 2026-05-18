@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 
 export default function SuperAdminDashboard() {
     const [inviteEmail, setInviteEmail] = useState('');
-    const [inviteRole, setInviteRole] = useState<'Admin' | 'Tenant'>('Admin');
+    const [inviteRole, setInviteRole] = useState<'Admin' | 'Tenant' | 'Tester'>('Admin');
     const [inviteStatus, setInviteStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
     const [inviteError, setInviteError] = useState('');
 
@@ -21,9 +21,19 @@ export default function SuperAdminDashboard() {
             await authApi.invite(inviteEmail, inviteRole);
             setInviteStatus('success');
             setInviteEmail('');
-        } catch {
+        } catch (err) {
             setInviteStatus('error');
-            setInviteError('Failed to send invite. Please try again.');
+            // Parse the error message from the server response body
+            let message = 'Failed to send invite. Please try again.';
+            if (err instanceof Error && err.message) {
+                try {
+                    const parsed = JSON.parse(err.message);
+                    message = parsed.error ?? parsed.message ?? err.message;
+                } catch {
+                    message = err.message;
+                }
+            }
+            setInviteError(message);
         }
     }
 
@@ -59,11 +69,12 @@ export default function SuperAdminDashboard() {
                                 <select
                                     id="invite-role"
                                     value={inviteRole}
-                                    onChange={e => setInviteRole(e.target.value as 'Admin' | 'Tenant')}
+                                    onChange={e => setInviteRole(e.target.value as 'Admin' | 'Tenant' | 'Tester')}
                                     className="w-full border border-zinc-700 rounded-md px-3 py-2 text-sm bg-zinc-800 text-zinc-200 focus:border-indigo-500 focus:outline-none"
                                 >
                                     <option value="Admin">Admin</option>
                                     <option value="Tenant">Tenant</option>
+                                    <option value="Tester">Tester</option>
                                 </select>
                             </div>
                             {inviteStatus === 'error' && (

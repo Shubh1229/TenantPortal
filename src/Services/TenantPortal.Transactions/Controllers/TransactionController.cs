@@ -42,7 +42,6 @@ namespace TenantPortal.Transactions.Controllers
             if (userId == null || role == null) return BadRequest("Invalid user ID or role in token");
 
             var transactions = await _transactionService.GetAllTransactionsAsync(userId.Value, role.Value);
-            if (!transactions.Any()) return NotFound("No transactions found.");
             return Ok(transactions);
         }
 

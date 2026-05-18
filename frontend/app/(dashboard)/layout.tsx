@@ -12,6 +12,7 @@ import {
     Calendar,
     LogOut,
     Building2,
+    FlaskConical,
 } from 'lucide-react';
 
 interface NavItem {
@@ -24,6 +25,7 @@ function roleNavItems(role: string | null): NavItem[] {
     if (role === 'SuperAdmin') {
         return [
             { href: '/super-admin', label: 'Dashboard', icon: <LayoutDashboard size={18} /> },
+            { href: '/super-admin/tests', label: 'System Tests', icon: <FlaskConical size={18} /> },
         ];
     }
     if (role === 'Admin') {
@@ -73,7 +75,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                         <Building2 size={15} className="text-white" />
                     </div>
                     <span className="font-semibold text-sm tracking-tight text-zinc-100">
-                        Tenant Portal
+                        Singh Resident Hub
                     </span>
                 </div>
 
