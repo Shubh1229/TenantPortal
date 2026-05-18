@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Serilog;
@@ -12,6 +13,15 @@ using TenantPortal.Shared.Helpers;
 using TenantPortal.Shared.Interfaces;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Port 8080: HTTP/1.1 for REST (gateway-facing).
+// Port 8081: HTTP/2 cleartext (h2c) for gRPC — TLS is terminated at the ingress/load-balancer.
+// Http1AndHttp2 on a single port requires TLS for HTTP/2 negotiation (ALPN), so we use two listeners.
+builder.WebHost.ConfigureKestrel(serverOptions =>
+{
+    serverOptions.ListenAnyIP(8080, o => o.Protocols = HttpProtocols.Http1);
+    serverOptions.ListenAnyIP(8081, o => o.Protocols = HttpProtocols.Http2);
+});
 
 Log.Logger = LoggingConfig.CreateDefault("notifications").CreateLogger();
 
@@ -69,8 +79,7 @@ builder.Services.AddSingleton<ISecretsProvider>(
 
 builder.Services.AddControllers();
 
-// gRPC server — listens on the same port as REST via Http1AndHttp2 (configured in appsettings.json).
-// Only internal services (Auth, Transactions) call these endpoints; they are not exposed to the gateway.
+// gRPC server on port 8081 (HTTP/2 only). REST stays on 8080 (HTTP/1.1 only).
 builder.Services.AddGrpc();
 
 var app = builder.Build();

@@ -73,9 +73,9 @@ builder.Services.AddSingleton<ISecretsProvider>(
     new AzureVaultSecretsProvider("https://singhresidenthub-vault.vault.azure.net/"));
 
 // Singleton: one gRPC channel shared across all requests (channels are thread-safe and expensive to create).
-var notificationsGrpcUrl = builder.Configuration["Notifications:GrpcUrl"] ?? "http://localhost:5004";
-builder.Services.AddSingleton<INotificationsGrpcClient>(
-    new NotificationsGrpcClient(notificationsGrpcUrl));
+var notificationsGrpcUrl = builder.Configuration["Notifications:GrpcUrl"] ?? "http://localhost:8081";
+builder.Services.AddSingleton<INotificationsGrpcClient>(sp =>
+    new NotificationsGrpcClient(notificationsGrpcUrl, sp.GetRequiredService<ILogger<NotificationsGrpcClient>>()));
 
 builder.Services.AddSingleton<ITotpEncryptionService>(
     new AesGcmTotpEncryptionService(totpEncryptionKey));

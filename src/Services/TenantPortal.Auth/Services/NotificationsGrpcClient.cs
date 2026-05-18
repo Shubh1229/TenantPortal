@@ -1,4 +1,5 @@
 using Grpc.Net.Client;
+using Microsoft.Extensions.Logging;
 using TenantPortal.Auth.Interfaces;
 using TenantPortal.Grpc;
 
@@ -9,18 +10,13 @@ namespace TenantPortal.Auth.Services
     {
         private readonly GrpcChannel _channel;
         private readonly NotificationGrpcService.NotificationGrpcServiceClient _client;
+        private readonly ILogger<NotificationsGrpcClient> _logger;
 
-        /// <param name="grpcUrl">
-        /// Base URL of the Notifications service gRPC endpoint (e.g. <c>http://localhost:5004</c>).
-        /// Loaded from the <c>Notifications:GrpcUrl</c> configuration key.
-        /// Must be HTTP (not HTTPS) for cleartext HTTP/2 (h2c) inside the Docker network.
-        /// </param>
-        public NotificationsGrpcClient(string grpcUrl)
+        public NotificationsGrpcClient(string grpcUrl, ILogger<NotificationsGrpcClient> logger)
         {
-            // Enable unencrypted HTTP/2 — required for h2c container-to-container gRPC.
-            // HTTPS is handled at the load-balancer / ingress layer, not between internal services.
+            _logger = logger;
+            // Enable h2c (HTTP/2 cleartext) — TLS is terminated at ingress, not between containers.
             AppContext.SetSwitch("System.Net.Http.SocketsHttpHandler.Http2UnencryptedSupport", true);
-
             _channel = GrpcChannel.ForAddress(grpcUrl);
             _client = new NotificationGrpcService.NotificationGrpcServiceClient(_channel);
         }
@@ -43,9 +39,9 @@ namespace TenantPortal.Auth.Services
                 });
                 return result.Success;
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                // gRPC failure must not block the invite flow — log and degrade gracefully.
+                _logger.LogError(ex, "gRPC SendInviteEmail failed for {Email}", toEmail);
                 return false;
             }
         }
@@ -63,8 +59,9 @@ namespace TenantPortal.Auth.Services
                 });
                 return result.Success;
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                _logger.LogError(ex, "gRPC CreateInAppNotification failed for user {UserId}", userId);
                 return false;
             }
         }

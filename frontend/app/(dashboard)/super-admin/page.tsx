@@ -21,9 +21,19 @@ export default function SuperAdminDashboard() {
             await authApi.invite(inviteEmail, inviteRole);
             setInviteStatus('success');
             setInviteEmail('');
-        } catch {
+        } catch (err) {
             setInviteStatus('error');
-            setInviteError('Failed to send invite. Please try again.');
+            // Parse the error message from the server response body
+            let message = 'Failed to send invite. Please try again.';
+            if (err instanceof Error && err.message) {
+                try {
+                    const parsed = JSON.parse(err.message);
+                    message = parsed.error ?? parsed.message ?? err.message;
+                } catch {
+                    message = err.message;
+                }
+            }
+            setInviteError(message);
         }
     }
 

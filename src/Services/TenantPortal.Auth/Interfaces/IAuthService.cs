@@ -50,7 +50,7 @@ namespace TenantPortal.Auth.Interfaces
         /// (via the Notification service once inter-service communication is wired up).
         /// </summary>
         /// <param name="createdBy">ID of the Admin or Super Admin sending the invite.</param>
-        /// <returns><c>true</c> if the invite was created; <c>false</c> if the email is already registered or the caller lacks permission.</returns>
-        Task<bool> SendInviteAsync(InviteRequestDTO request, Guid createdBy);
+        /// <returns>Success flag and a user-facing error message (null on success).</returns>
+        Task<(bool Success, string? Error)> SendInviteAsync(InviteRequestDTO request, Guid createdBy);
     }
 }

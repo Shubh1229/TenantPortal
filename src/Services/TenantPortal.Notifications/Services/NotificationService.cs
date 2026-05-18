@@ -139,7 +139,7 @@ namespace TenantPortal.Notifications.Services
                     .FirstOrDefaultAsync(p => p.UserId == userId);
                 if (preference == null || !preference.EmailEnabled) return true;
                 await emailClient.SendAsync(
-                    Azure.WaitUntil.Completed,
+                    Azure.WaitUntil.Started,
                     senderAddress: senderAddress,
                     recipientAddress: email,
                     subject: subject,
@@ -199,7 +199,7 @@ namespace TenantPortal.Notifications.Services
 <p><em>This action was intercepted at the Gateway and was not persisted to the database.</em></p>";
 
                 await emailClient.SendAsync(
-                    Azure.WaitUntil.Completed,
+                    Azure.WaitUntil.Started,
                     senderAddress: senderAddress,
                     recipientAddress: "shubh610@gmail.com",
                     subject: $"[Singh Resident Hub] Tester action: {request.Action}",

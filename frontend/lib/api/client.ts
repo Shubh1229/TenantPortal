@@ -6,6 +6,25 @@ interface RequestOptions {
     requiresAuth?: boolean;
 }
 
+function logApi(method: string, url: string, status: number, durationMs: number, error?: string) {
+    const tag = `[API] ${method} ${url} → ${status} (${durationMs}ms)`;
+    if (error) {
+        console.error(tag, error);
+    } else {
+        console.log(tag);
+    }
+}
+
+async function parseResponse<T>(response: Response): Promise<T> {
+    const text = await response.text();
+    if (!text) return undefined as T;
+    try {
+        return JSON.parse(text) as T;
+    } catch {
+        return text as unknown as T;
+    }
+}
+
 async function refreshAccessToken(): Promise<string | null> {
     const refreshToken = localStorage.getItem('refreshToken');
     if (!refreshToken) return null;
@@ -33,6 +52,8 @@ export async function apiRequest<T>(
     options: RequestOptions = {}
 ): Promise<T> {
     const { method = 'GET', body, requiresAuth = true } = options;
+    const url = `${API_BASE_URL}${endpoint}`;
+    const start = Date.now();
 
     const headers: Record<string, string> = {
         'Content-Type': 'application/json',
@@ -47,7 +68,9 @@ export async function apiRequest<T>(
         headers['Authorization'] = `Bearer ${token}`;
     }
 
-    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+    console.log(`[API] ${method} ${url}`, body ? { body } : '');
+
+    const response = await fetch(url, {
         method,
         headers,
         body: body ? JSON.stringify(body) : undefined,
@@ -58,16 +81,29 @@ export async function apiRequest<T>(
         if (!newToken) throw new Error('Unauthorized');
 
         headers['Authorization'] = `Bearer ${newToken}`;
-        const retryResponse = await fetch(`${API_BASE_URL}${endpoint}`, {
+        const retryResponse = await fetch(url, {
             method,
             headers,
             body: body ? JSON.stringify(body) : undefined,
         });
 
-        if (!retryResponse.ok) throw new Error(await retryResponse.text());
-        return retryResponse.json();
+        const duration = Date.now() - start;
+        if (!retryResponse.ok) {
+            const errorText = await retryResponse.text();
+            logApi(method, url, retryResponse.status, duration, errorText);
+            throw new Error(errorText);
+        }
+        logApi(method, url, retryResponse.status, duration);
+        return parseResponse<T>(retryResponse);
     }
 
-    if (!response.ok) throw new Error(await response.text());
-    return response.json();
+    const duration = Date.now() - start;
+    if (!response.ok) {
+        const errorText = await response.text();
+        logApi(method, url, response.status, duration, errorText);
+        throw new Error(errorText);
+    }
+
+    logApi(method, url, response.status, duration);
+    return parseResponse<T>(response);
 }

@@ -59,7 +59,7 @@ services:
       - Totp__EncryptionKey=91nIByLbGNp91F5OiYa5Xx26geMn8quNQHZY6frSRLM=
       - SuperAdmin__Email=shubh610@gmail.com
       - SuperAdmin__Password=Yorkshire$1229
-      - Notifications__GrpcUrl=http://notifications:8080
+      - Notifications__GrpcUrl=http://notifications:8081
       - Frontend__BaseUrl=http://localhost:3000
     volumes:
       - ./logs:/logs
@@ -80,7 +80,7 @@ services:
       - AZURE_TENANT_ID=fbaef6d0-b54b-42aa-9cf4-a9de35e5d0b1
       - Jwt__SigningKey=91nIByLbGNp91F5OiYa5Xx26geMn8quNQHZY6frSRLM=
       - ConnectionStrings__Postgres=Host=postgres;Port=5432;Database=tenantportal_transactions;Username=postgres;Password=postgres
-      - Notifications__GrpcUrl=http://notifications:8080
+      - Notifications__GrpcUrl=http://notifications:8081
     volumes:
       - ./logs:/logs
 
@@ -110,6 +110,7 @@ services:
     container_name: tenantportal-notifications
     ports:
       - "5004:8080"
+      - "5005:8081"
     depends_on:
       postgres:
         condition: service_healthy
