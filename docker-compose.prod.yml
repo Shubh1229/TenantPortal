@@ -59,7 +59,7 @@ services:
       - Totp__EncryptionKey=${TOTP_ENCRYPTION_KEY}
       - SuperAdmin__Email=${SUPER_ADMIN_EMAIL}
       - SuperAdmin__Password=${SUPER_ADMIN_PASSWORD}
-      - Notifications__GrpcUrl=http://notifications:8080
+      - Notifications__GrpcUrl=http://notifications:8081
       - Frontend__BaseUrl=https://singhresidenthub.com
     volumes:
       - ./logs:/logs

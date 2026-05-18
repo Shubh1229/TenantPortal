@@ -19,10 +19,8 @@
 **/secrets.json
 
 .claude
+.env
 .env.prod
-
-docker-compose.yml
-docker-compose.prod.yml
 
 Media
 # Mono auto generated files
