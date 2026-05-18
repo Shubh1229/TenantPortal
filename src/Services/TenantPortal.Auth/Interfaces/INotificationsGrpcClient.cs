@@ -22,5 +22,12 @@ namespace TenantPortal.Auth.Interfaces
         /// Creates an in-app notification for a user via the Notifications service.
         /// </summary>
         Task<bool> CreateInAppNotificationAsync(Guid userId, int notificationType, string message);
+
+        /// <summary>
+        /// Probes the gRPC channel with a 3-second deadline.
+        /// Returns connected=true even if the server returns a protocol-level error (e.g. invalid argument),
+        /// because that still proves the channel is up. Returns false only on Unavailable or timeout.
+        /// </summary>
+        Task<(bool Connected, string Detail)> PingAsync();
     }
 }

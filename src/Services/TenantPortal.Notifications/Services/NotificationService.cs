@@ -94,10 +94,9 @@ namespace TenantPortal.Notifications.Services
         public async Task<NotificationPreferenceDTO?> GetNotificationPreferenceAsync(Guid userId)
         {
             var preference = await _context.NotificationPreferences.FirstOrDefaultAsync(p => p.UserId == userId);
-            if (preference == null) return null;
             return new NotificationPreferenceDTO
             {
-                EmailEnabled = preference.EmailEnabled
+                EmailEnabled = preference?.EmailEnabled ?? true
             };
         }
 

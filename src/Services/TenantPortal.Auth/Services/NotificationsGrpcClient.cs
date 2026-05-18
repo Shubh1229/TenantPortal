@@ -1,3 +1,4 @@
+using Grpc.Core;
 using Grpc.Net.Client;
 using Microsoft.Extensions.Logging;
 using TenantPortal.Auth.Interfaces;
@@ -63,6 +64,29 @@ namespace TenantPortal.Auth.Services
             {
                 _logger.LogError(ex, "gRPC CreateInAppNotification failed for user {UserId}", userId);
                 return false;
+            }
+        }
+
+        /// <inheritdoc/>
+        public async Task<(bool Connected, string Detail)> PingAsync()
+        {
+            try
+            {
+                // Send a request with an invalid UserId — the server will return InvalidArgument,
+                // but any gRPC status other than Unavailable/DeadlineExceeded proves the channel is up.
+                await _client.CreateInAppNotificationAsync(
+                    new CreateInAppNotificationRequest { UserId = "ping", NotificationType = 0, Message = "system-test-ping" },
+                    deadline: DateTime.UtcNow.AddSeconds(3));
+                return (true, "Ready");
+            }
+            catch (RpcException ex) when (ex.StatusCode != StatusCode.Unavailable && ex.StatusCode != StatusCode.DeadlineExceeded)
+            {
+                // Got a gRPC-level error (e.g. InvalidArgument) — channel IS connected
+                return (true, $"Connected (server status: {ex.StatusCode})");
+            }
+            catch (Exception ex)
+            {
+                return (false, ex.Message);
             }
         }
 
