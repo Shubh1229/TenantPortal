@@ -38,5 +38,8 @@ namespace TenantPortal.Transactions.Interfaces
 
         /// <summary>Soft-deletes a transaction by setting <c>IsDeleted = true</c>.</summary>
         Task<bool> SoftDeleteTransactionAsync(Guid transactionId, Guid userId);
+
+        /// <summary>Seeds demo rent schedule and transaction history for a Tester account. Idempotent.</summary>
+        Task<bool> SeedTesterDataAsync(Guid tenantId);
     }
 }

@@ -25,4 +25,8 @@
     <ProjectReference Include="..\..\Shared\TenantPortal.Shared\TenantPortal.Shared.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <EmbeddedResource Include="SeedData\fake_lease_contract.pdf" />
+  </ItemGroup>
+
 </Project>

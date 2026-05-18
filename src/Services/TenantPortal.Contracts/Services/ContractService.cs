@@ -42,7 +42,7 @@ namespace TenantPortal.Contracts.Services
         public async Task<ContractDownloadResponseDTO?> DownloadContractAsync(Guid contractId, Guid userId, UserRole role)
         {
             Contract? contract;
-            if (role == UserRole.Tenant)
+            if (role == UserRole.Tenant || role == UserRole.Tester)
                 contract = await _context.Contracts.FirstOrDefaultAsync(c => c.Id == contractId && c.TenantId == userId && !c.IsDeleted);
             else if (role == UserRole.Admin)
                 contract = await _context.Contracts.FirstOrDefaultAsync(c => c.Id == contractId && c.UploadedBy == userId && !c.IsDeleted);
@@ -64,7 +64,7 @@ namespace TenantPortal.Contracts.Services
 
         public async Task<List<ContractResponseDTO>> GetAllContractsAsync(Guid userId, UserRole role)
         {
-            if (role == UserRole.Tenant)
+            if (role == UserRole.Tenant || role == UserRole.Tester)
             {
                 var contracts = await _context.Contracts
                     .Where(c => c.TenantId == userId && !c.IsDeleted)
@@ -74,8 +74,6 @@ namespace TenantPortal.Contracts.Services
 
             if (role == UserRole.Admin)
             {
-                // Admins see only contracts they uploaded (i.e. contracts for their own tenants).
-                // UploadedBy is always the uploading Admin, so this correctly scopes to their tenant portfolio.
                 var contracts = await _context.Contracts
                     .Where(c => c.UploadedBy == userId && !c.IsDeleted)
                     .ToListAsync();
@@ -89,7 +87,7 @@ namespace TenantPortal.Contracts.Services
 
         public async Task<ContractResponseDTO?> GetContractAsync(Guid contractId, Guid userId, UserRole role)
         {
-            if (role == UserRole.Tenant)
+            if (role == UserRole.Tenant || role == UserRole.Tester)
             {
                 var contract = await _context.Contracts.FirstOrDefaultAsync(c =>
                     c.Id == contractId && c.TenantId == userId && !c.IsDeleted);
@@ -103,7 +101,6 @@ namespace TenantPortal.Contracts.Services
                 return contract == null ? null : MapToDTO(contract);
             }
 
-            // SuperAdmin can access any contract
             var adminContract = await _context.Contracts.FirstOrDefaultAsync(c =>
                 c.Id == contractId && !c.IsDeleted);
             return adminContract == null ? null : MapToDTO(adminContract);
@@ -141,6 +138,54 @@ namespace TenantPortal.Contracts.Services
                 await _context.SaveChangesAsync();
                 return true;
             } catch (Exception)
+            {
+                return false;
+            }
+        }
+
+        // Well-known placeholder IDs for demo seed data — same values used by the Transactions seeder.
+        private static readonly Guid FakeUnitId     = new("a1b2c3d4-e5f6-7890-abcd-ef1234567890");
+        private static readonly Guid FakeUploaderId = new("b2c3d4e5-f6a7-8901-bcde-f12345678901");
+
+        public async Task<bool> SeedTesterDataAsync(Guid tenantId)
+        {
+            // Idempotent — skip if a contract for this tester already exists
+            if (await _context.Contracts.AnyAsync(c => c.TenantId == tenantId && !c.IsDeleted))
+                return true;
+
+            try
+            {
+                var contractId = Guid.NewGuid();
+                var blobPath = $"contracts/{tenantId}/{FakeUnitId}/{contractId}";
+
+                // Read the embedded demo PDF
+                var assembly = typeof(ContractService).Assembly;
+                var resourceName = assembly.GetManifestResourceNames()
+                    .First(n => n.EndsWith("fake_lease_contract.pdf", StringComparison.OrdinalIgnoreCase));
+                using var pdfStream = assembly.GetManifestResourceStream(resourceName)!;
+
+                // Upload to blob storage
+                var container = _blobClient.GetBlobContainerClient("contracts");
+                await container.CreateIfNotExistsAsync();
+                await container.GetBlobClient(blobPath).UploadAsync(pdfStream, overwrite: true);
+
+                await _context.Contracts.AddAsync(new Contract
+                {
+                    Id = contractId,
+                    TenantId = tenantId,
+                    UnitId = FakeUnitId,
+                    FileName = "742-Willow-Creek-Unit3B-Lease-2026.pdf",
+                    BlobStoragePath = blobPath,
+                    IsCurrent = true,
+                    IsDeleted = false,
+                    UploadedBy = FakeUploaderId,
+                    UploadedAt = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+                    UpdatedAt = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+                });
+                await _context.SaveChangesAsync();
+                return true;
+            }
+            catch (Exception)
             {
                 return false;
             }

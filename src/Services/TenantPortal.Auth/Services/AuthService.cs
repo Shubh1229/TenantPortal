@@ -1,6 +1,7 @@
 using BCrypt.Net;
 using Microsoft.EntityFrameworkCore;
 using System.Collections.Concurrent;
+using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text;
 using TenantPortal.Auth.Data;
@@ -22,6 +23,7 @@ namespace TenantPortal.Auth.Services
         private readonly ISecretsProvider _secretsProvider;
         private readonly INotificationsGrpcClient _notificationsGrpc;
         private readonly IConfiguration _configuration;
+        private readonly IHttpClientFactory _httpClientFactory;
 
         // Holds temp tokens issued after password validation, pending TOTP verification.
         // Static + ConcurrentDictionary so multiple concurrent login attempts don't race.
@@ -35,7 +37,8 @@ namespace TenantPortal.Auth.Services
             AuthDbContext context,
             ISecretsProvider secretsProvider,
             INotificationsGrpcClient notificationsGrpc,
-            IConfiguration configuration)
+            IConfiguration configuration,
+            IHttpClientFactory httpClientFactory)
         {
             _jwtService = jwtService;
             _totpService = totpService;
@@ -44,6 +47,7 @@ namespace TenantPortal.Auth.Services
             _secretsProvider = secretsProvider;
             _notificationsGrpc = notificationsGrpc;
             _configuration = configuration;
+            _httpClientFactory = httpClientFactory;
         }
 
         /// <inheritdoc/>
@@ -173,9 +177,10 @@ namespace TenantPortal.Auth.Services
             }
 
             // Normal registration — new user
+            var newUserId = Guid.NewGuid();
             await _context.Users.AddAsync(new User
             {
-                Id = Guid.NewGuid(),
+                Id = newUserId,
                 Role = inviteRecord.Role,
                 Email = inviteRecord.Email,
                 PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password),
@@ -189,6 +194,9 @@ namespace TenantPortal.Auth.Services
 
             inviteRecord.Used = true;
             await _context.SaveChangesAsync();
+
+            if (inviteRecord.Role == UserRole.Tester)
+                _ = SeedTesterDataAsync(newUserId);
 
             return new TotpSetupResponseDTO
             {
@@ -272,6 +280,19 @@ namespace TenantPortal.Auth.Services
                 request.Email, plainToken, request.Role.ToString(), frontendBaseUrl);
 
             return (true, null);
+        }
+
+        // Fire-and-forget: seeds demo data in Transactions and Contracts services after Tester registration.
+        // Failures are swallowed — seeding is non-fatal and registration is already committed.
+        private async Task SeedTesterDataAsync(Guid tenantId)
+        {
+            var txBase = _configuration["Services:TransactionsUrl"] ?? "http://transactions:8080";
+            var cnBase = _configuration["Services:ContractsUrl"] ?? "http://contracts:8080";
+            var payload = JsonContent.Create(new { TenantId = tenantId });
+
+            var client = _httpClientFactory.CreateClient();
+            try { await client.PostAsync($"{txBase}/api/transactions/internal/seed-tester", payload); } catch { }
+            try { await client.PostAsync($"{cnBase}/api/contracts/internal/seed-tester", JsonContent.Create(new { TenantId = tenantId })); } catch { }
         }
 
         /// <summary>

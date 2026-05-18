@@ -81,6 +81,8 @@ builder.Services.AddSingleton<INotificationsGrpcClient>(sp =>
 builder.Services.AddSingleton<ITotpEncryptionService>(
     new AesGcmTotpEncryptionService(totpEncryptionKey));
 
+builder.Services.AddHttpClient();
+
 builder.Services.AddControllers()
     .AddJsonOptions(o => o.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 builder.Services.AddOpenApi();

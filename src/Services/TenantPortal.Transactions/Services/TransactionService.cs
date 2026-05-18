@@ -82,7 +82,7 @@ namespace TenantPortal.Transactions.Services
 
         public async Task<List<Transaction>> GetAllTransactionsAsync(Guid userId, UserRole role)
         {
-            if (role == UserRole.Tenant)
+            if (role == UserRole.Tenant || role == UserRole.Tester)
             {
                 return await _context.Transactions
                     .Where(t => t.TenantId == userId && !t.IsDeleted)
@@ -112,7 +112,7 @@ namespace TenantPortal.Transactions.Services
 
         public async Task<Transaction?> GetTransactionAsync(Guid transactionId, Guid userId, UserRole role)
         {
-            if (role == UserRole.Tenant)
+            if (role == UserRole.Tenant || role == UserRole.Tester)
             {
                 return await _context.Transactions.FirstOrDefaultAsync(t =>
                     t.Id == transactionId && t.TenantId == userId && !t.IsDeleted);
@@ -178,6 +178,72 @@ namespace TenantPortal.Transactions.Services
                 await _context.SaveChangesAsync();
                 return true;
             } catch (Exception)
+            {
+                return false;
+            }
+        }
+
+        // Well-known placeholder IDs for demo seed data — same values used by the Contracts seeder.
+        private static readonly Guid FakeUnitId   = new("a1b2c3d4-e5f6-7890-abcd-ef1234567890");
+        private static readonly Guid FakeAdminId  = new("b2c3d4e5-f6a7-8901-bcde-f12345678901");
+
+        public async Task<bool> SeedTesterDataAsync(Guid tenantId)
+        {
+            // Idempotent — skip if seed data already exists for this tester
+            if (await _context.Transactions.AnyAsync(t => t.TenantId == tenantId && !t.IsDeleted))
+                return true;
+
+            try
+            {
+                // Rent schedule: $1,850/month due on the 1st, parking rolled into transactions
+                await _context.RentSchedules.AddAsync(new RentSchedule
+                {
+                    Id = Guid.NewGuid(),
+                    TenantId = tenantId,
+                    UnitId = FakeUnitId,
+                    MonthlyAmount = 1850m,
+                    DueDayOfMonth = 1,
+                    StartDate = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+                    CreatedBy = FakeAdminId,
+                    CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+                    UpdatedAt = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+                });
+
+                // 6 confirmed payments Jan–Jun 2026 ($1,925 = $1,850 rent + $75 parking)
+                var payments = new[]
+                {
+                    (due: new DateTime(2026, 1,  1, 0,0,0, DateTimeKind.Utc), paid: new DateTime(2026, 1,  2, 0,0,0, DateTimeKind.Utc), method: PaymentMethod.Card),
+                    (due: new DateTime(2026, 2,  1, 0,0,0, DateTimeKind.Utc), paid: new DateTime(2026, 2,  1, 0,0,0, DateTimeKind.Utc), method: PaymentMethod.Card),
+                    (due: new DateTime(2026, 3,  1, 0,0,0, DateTimeKind.Utc), paid: new DateTime(2026, 3,  2, 0,0,0, DateTimeKind.Utc), method: PaymentMethod.Card),
+                    (due: new DateTime(2026, 4,  1, 0,0,0, DateTimeKind.Utc), paid: new DateTime(2026, 4,  5, 0,0,0, DateTimeKind.Utc), method: PaymentMethod.Card),
+                    (due: new DateTime(2026, 5,  1, 0,0,0, DateTimeKind.Utc), paid: new DateTime(2026, 5,  2, 0,0,0, DateTimeKind.Utc), method: PaymentMethod.Card),
+                    (due: new DateTime(2026, 6,  1, 0,0,0, DateTimeKind.Utc), paid: new DateTime(2026, 6,  2, 0,0,0, DateTimeKind.Utc), method: PaymentMethod.BankTransfer),
+                };
+
+                foreach (var p in payments)
+                {
+                    await _context.Transactions.AddAsync(new Transaction
+                    {
+                        Id = Guid.NewGuid(),
+                        TenantId = tenantId,
+                        UnitId = FakeUnitId,
+                        Type = TransactionType.Rent,
+                        Amount = 1925m,
+                        Status = TransactionStatus.Confirmed,
+                        PaymentMethod = p.method,
+                        DueDate = p.due,
+                        PaidDate = p.paid,
+                        IsDeleted = false,
+                        CreatedBy = FakeAdminId,
+                        CreatedAt = p.paid,
+                        UpdatedAt = p.paid,
+                    });
+                }
+
+                await _context.SaveChangesAsync();
+                return true;
+            }
+            catch (Exception)
             {
                 return false;
             }

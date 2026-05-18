@@ -84,6 +84,18 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.UseMiddleware<CorrelationIdMiddleware>();
 app.UseMiddleware<TesterInterceptMiddleware>();
+
+// Block internal service-to-service endpoints from being reachable via the gateway.
+app.Use(async (context, next) =>
+{
+    if (context.Request.Path.Value?.Contains("/internal/", StringComparison.OrdinalIgnoreCase) == true)
+    {
+        context.Response.StatusCode = 404;
+        return;
+    }
+    await next(context);
+});
+
 app.MapReverseProxy();
 
 app.Run();

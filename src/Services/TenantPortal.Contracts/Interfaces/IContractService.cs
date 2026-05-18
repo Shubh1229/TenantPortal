@@ -35,5 +35,8 @@ namespace TenantPortal.Contracts.Interfaces
 
         /// <summary>Soft-deletes a contract. Tenants are rejected; Admin and Super Admin only.</summary>
         Task<bool> DeleteContractAsync(Guid contractId, Guid userId, UserRole role);
+
+        /// <summary>Seeds a demo lease contract PDF into blob storage and the DB for a Tester account. Idempotent.</summary>
+        Task<bool> SeedTesterDataAsync(Guid tenantId);
     }
 }
