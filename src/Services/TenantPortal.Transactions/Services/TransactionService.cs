@@ -212,12 +212,12 @@ namespace TenantPortal.Transactions.Services
                 // 6 confirmed payments Jan–Jun 2026 ($1,925 = $1,850 rent + $75 parking)
                 var payments = new[]
                 {
-                    (due: new DateTime(2026, 1,  1, 0,0,0, DateTimeKind.Utc), paid: new DateTime(2026, 1,  2, 0,0,0, DateTimeKind.Utc), method: PaymentMethod.Card),
-                    (due: new DateTime(2026, 2,  1, 0,0,0, DateTimeKind.Utc), paid: new DateTime(2026, 2,  1, 0,0,0, DateTimeKind.Utc), method: PaymentMethod.Card),
-                    (due: new DateTime(2026, 3,  1, 0,0,0, DateTimeKind.Utc), paid: new DateTime(2026, 3,  2, 0,0,0, DateTimeKind.Utc), method: PaymentMethod.Card),
-                    (due: new DateTime(2026, 4,  1, 0,0,0, DateTimeKind.Utc), paid: new DateTime(2026, 4,  5, 0,0,0, DateTimeKind.Utc), method: PaymentMethod.Card),
-                    (due: new DateTime(2026, 5,  1, 0,0,0, DateTimeKind.Utc), paid: new DateTime(2026, 5,  2, 0,0,0, DateTimeKind.Utc), method: PaymentMethod.Card),
-                    (due: new DateTime(2026, 6,  1, 0,0,0, DateTimeKind.Utc), paid: new DateTime(2026, 6,  2, 0,0,0, DateTimeKind.Utc), method: PaymentMethod.BankTransfer),
+                    (due: new DateTime(2026, 1,  1, 0,0,0, DateTimeKind.Utc), paid: new DateTime(2026, 1,  2, 0,0,0, DateTimeKind.Utc), method: PaymentMethod.Stripe),
+                    (due: new DateTime(2026, 2,  1, 0,0,0, DateTimeKind.Utc), paid: new DateTime(2026, 2,  1, 0,0,0, DateTimeKind.Utc), method: PaymentMethod.Stripe),
+                    (due: new DateTime(2026, 3,  1, 0,0,0, DateTimeKind.Utc), paid: new DateTime(2026, 3,  2, 0,0,0, DateTimeKind.Utc), method: PaymentMethod.Stripe),
+                    (due: new DateTime(2026, 4,  1, 0,0,0, DateTimeKind.Utc), paid: new DateTime(2026, 4,  5, 0,0,0, DateTimeKind.Utc), method: PaymentMethod.Stripe),
+                    (due: new DateTime(2026, 5,  1, 0,0,0, DateTimeKind.Utc), paid: new DateTime(2026, 5,  2, 0,0,0, DateTimeKind.Utc), method: PaymentMethod.Stripe),
+                    (due: new DateTime(2026, 6,  1, 0,0,0, DateTimeKind.Utc), paid: new DateTime(2026, 6,  2, 0,0,0, DateTimeKind.Utc), method: PaymentMethod.External),
                 };
 
                 foreach (var p in payments)

@@ -14,10 +14,12 @@ namespace TenantPortal.Transactions.Services
     {
         private readonly TransactionDbContext _context;
         private readonly ISecretsProvider _secretsProvider;
-        public StripeService(TransactionDbContext context, ISecretsProvider secretsProvider)
+        private readonly ILogger<StripeService> _logger;
+        public StripeService(TransactionDbContext context, ISecretsProvider secretsProvider, ILogger<StripeService> logger)
         {
             _context = context;
             _secretsProvider = secretsProvider;
+            _logger = logger;
         }
         public async Task<string?> CreatePaymentIntentAsync(PaymentIntentRequestDTO request, Guid userId)
         {
@@ -63,6 +65,23 @@ namespace TenantPortal.Transactions.Services
                 }
 
                 var intent = await new PaymentIntentService().CreateAsync(options);
+
+                _context.Transactions.Add(new Transaction
+                {
+                    Id = Guid.NewGuid(),
+                    TenantId = userId,
+                    UnitId = schedule.UnitId,
+                    Type = TransactionType.Rent,
+                    Amount = request.Amount,
+                    Status = TransactionStatus.Pending,
+                    PaymentMethod = isAch ? TenantPortal.Shared.Enums.PaymentMethod.Ach : TenantPortal.Shared.Enums.PaymentMethod.Stripe,
+                    StripePaymentIntentId = intent.Id,
+                    CreatedBy = userId,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
+                });
+                await _context.SaveChangesAsync();
+
                 return intent.ClientSecret;
             }
             catch (Exception)
@@ -83,15 +102,27 @@ namespace TenantPortal.Transactions.Services
                     if (paymentIntent == null) return false;
                     var transaction = await _context.Transactions
                         .FirstOrDefaultAsync(t => t.StripePaymentIntentId == paymentIntent.Id);
-                    if (transaction == null) return false;
+                    if (transaction == null)
+                    {
+                        _logger.LogWarning("Received payment_intent.succeeded for unknown PaymentIntent {PaymentIntentId} — no matching transaction found.", paymentIntent.Id);
+                        return true;
+                    }
                     transaction.Status = TransactionStatus.Confirmed;
                     transaction.PaidDate = DateTime.UtcNow;
                     transaction.UpdatedAt = DateTime.UtcNow;
                     await _context.SaveChangesAsync();
+                    _logger.LogInformation("Transaction {TransactionId} confirmed via Stripe webhook for PaymentIntent {PaymentIntentId}.", transaction.Id, paymentIntent.Id);
                 }
                 return true;
-            } catch (Exception)
+            }
+            catch (StripeException ex)
             {
+                _logger.LogError(ex, "Stripe webhook signature validation failed.");
+                return false;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Unhandled error processing Stripe webhook.");
                 return false;
             }
         }
