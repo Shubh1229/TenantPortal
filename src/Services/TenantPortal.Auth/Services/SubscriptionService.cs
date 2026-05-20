@@ -36,6 +36,8 @@ namespace TenantPortal.Auth.Services
         /// <inheritdoc/>
         public async Task<AdminRegisterResponseDTO?> RegisterAdminAsync(AdminRegisterRequestDTO request)
         {
+            request.Email = request.Email.Trim().ToLowerInvariant();
+
             // Reject duplicate emails before touching Stripe
             if (await _context.Users.AnyAsync(u => u.Email == request.Email && !u.IsDeleted))
                 return null;

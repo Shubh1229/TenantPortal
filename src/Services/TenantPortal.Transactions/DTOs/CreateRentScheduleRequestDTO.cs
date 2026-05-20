@@ -1,10 +1,13 @@
 namespace TenantPortal.Transactions.DTOs
 {
-    /// <summary>Request body for creating a new rent schedule for a tenant.</summary>
+    /// <summary>Request body for creating a new rent schedule.</summary>
     public class CreateRentScheduleRequestDTO
     {
-        /// <summary>The tenant the schedule applies to.</summary>
-        public required Guid TenantId { get; set; }
+        /// <summary>
+        /// The tenant the schedule applies to. Required for PerTenant units.
+        /// Omit (or set null) for SharedUnit schedules — the schedule belongs to the unit, not a specific tenant.
+        /// </summary>
+        public Guid? TenantId { get; set; }
 
         /// <summary>The unit associated with this rent schedule.</summary>
         public required Guid UnitId { get; set; }

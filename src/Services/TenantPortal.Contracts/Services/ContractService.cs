@@ -12,11 +12,11 @@ namespace TenantPortal.Contracts.Services
     public class ContractService : IContractService
     {
         private readonly ContractDbContext _context;
-        private readonly BlobServiceClient _blobClient;
+        private readonly BlobContainerClient _blobContainerClient;
         public ContractService(ContractDbContext context, BlobServiceClient blobClient)
         {
             _context = context;
-            _blobClient = blobClient;
+            _blobContainerClient = blobClient.GetBlobContainerClient("contracts");
         }
         public async Task<bool> DeleteContractAsync(Guid contractId, Guid userId, UserRole role)
         {
@@ -133,8 +133,9 @@ namespace TenantPortal.Contracts.Services
                     c.IsCurrent = false;
                     c.UpdatedAt = DateTime.UtcNow;
                 }
+                await _blobContainerClient.CreateIfNotExistsAsync();
+                await _blobContainerClient.GetBlobClient(contract.BlobStoragePath).UploadAsync(request.File.OpenReadStream());
                 await _context.Contracts.AddAsync(contract);
-                await _blobClient.GetBlobContainerClient("contracts").GetBlobClient(contract.BlobStoragePath).UploadAsync(request.File.OpenReadStream());
                 await _context.SaveChangesAsync();
                 return true;
             } catch (Exception)
@@ -165,9 +166,8 @@ namespace TenantPortal.Contracts.Services
                 using var pdfStream = assembly.GetManifestResourceStream(resourceName)!;
 
                 // Upload to blob storage
-                var container = _blobClient.GetBlobContainerClient("contracts");
-                await container.CreateIfNotExistsAsync();
-                await container.GetBlobClient(blobPath).UploadAsync(pdfStream, overwrite: true);
+                await _blobContainerClient.CreateIfNotExistsAsync();
+                await _blobContainerClient.GetBlobClient(blobPath).UploadAsync(pdfStream, overwrite: true);
 
                 await _context.Contracts.AddAsync(new Contract
                 {
@@ -212,9 +212,7 @@ namespace TenantPortal.Contracts.Services
         {
             try
             {
-                var blobClient = _blobClient
-                    .GetBlobContainerClient("contracts")
-                    .GetBlobClient(blobPath);
+                var blobClient = _blobContainerClient.GetBlobClient(blobPath);
                 return blobClient.GenerateSasUri(
                     Azure.Storage.Sas.BlobSasPermissions.Read,
                     expiresOn).ToString();

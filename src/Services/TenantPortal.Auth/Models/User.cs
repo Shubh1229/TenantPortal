@@ -19,6 +19,12 @@ namespace TenantPortal.Auth.Models
         /// <summary>Login identifier. Unique across all users.</summary>
         public required string Email { get; set; }
 
+        /// <summary>
+        /// True once the user has submitted the post-registration profile form (name, phone, etc.).
+        /// The frontend redirects to /profile-setup until this is set.
+        /// </summary>
+        public bool IsProfileComplete { get; set; }
+
         /// <summary>bcrypt hash of the user's password. Never stored in plain text.</summary>
         public required string PasswordHash { get; set; }
 
@@ -88,5 +94,13 @@ namespace TenantPortal.Auth.Models
         /// Set to 10 for the base $20/month plan; increase for higher tiers.
         /// </summary>
         public int? MaxTenants { get; set; }
+
+        // ── Hierarchy is tracked relationally, not as denormalised lists ─────────────
+        //
+        // "Who did this user invite?"   → query Users WHERE InvitedBy = this.Id
+        // "Pending invites not yet accepted?" → query InviteTokens WHERE CreatedBy = this.Id AND !Used
+        //
+        // IsActive = false  → placeholder created when an invite is sent; still unregistered
+        // IsActive = true   → fully registered account
     }
 }

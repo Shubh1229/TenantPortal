@@ -17,6 +17,8 @@ export type PaymentMethod = 'Stripe' | 'Ach' | 'External' | 'Manual';
 
 export type SubscriptionStatusValue = 'None' | 'Trialing' | 'Active' | 'PastDue' | 'Canceled';
 
+export type BillingMode = 'PerTenant' | 'SharedUnit';
+
 export type NotificationType =
   | 'PaymentConfirmed'
   | 'PaymentPending'
@@ -31,6 +33,23 @@ export interface User {
   email: string;
   role: UserRole;
   isActive: boolean;
+}
+
+export interface NotificationEmail {
+  id: string;
+  email: string;
+}
+
+export interface UserProfile {
+  email: string;
+  role: string;
+  isProfileComplete: boolean;
+  firstName?: string;
+  lastName?: string;
+  phoneNumber?: string;
+  emergencyContactName?: string;
+  emergencyContactPhone?: string;
+  notificationEmails: NotificationEmail[];
 }
 
 export interface LoginRequest {
@@ -82,7 +101,7 @@ export interface Notification {
 
 export interface RentSchedule {
   id: string;
-  tenantId: string;
+  tenantId?: string;
   unitId: string;
   monthlyAmount: number;
   dueDayOfMonth: number;
@@ -113,6 +132,26 @@ export interface AdminRegisterResponse {
     manualEntryKey: string;
     qrCode: string;
   };
+}
+
+export interface Property {
+  id: string;
+  name: string;
+  address: string;
+  isActive: boolean;
+  createdAt: string;
+}
+
+export interface Unit {
+  id: string;
+  propertyId: string;
+  unitNumber: string;
+  bedrooms?: number;
+  bathrooms?: number;
+  squareFeet?: number;
+  isActive: boolean;
+  billingMode: BillingMode;
+  currentTenantIds: string[];
 }
 
 export interface ApiError {

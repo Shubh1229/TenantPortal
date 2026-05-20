@@ -2,8 +2,9 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useAuth } from '@/lib/hooks/useAuth';
+import { authApi } from '@/lib/api/auth';
 import {
     LayoutDashboard,
     CreditCard,
@@ -13,6 +14,9 @@ import {
     LogOut,
     Building2,
     FlaskConical,
+    Home,
+    Settings,
+    User,
 } from 'lucide-react';
 
 interface NavItem {
@@ -26,13 +30,18 @@ function roleNavItems(role: string | null): NavItem[] {
         return [
             { href: '/super-admin', label: 'Dashboard', icon: <LayoutDashboard size={18} /> },
             { href: '/super-admin/tests', label: 'System Tests', icon: <FlaskConical size={18} /> },
+            { href: '/profile', label: 'Profile', icon: <User size={18} /> },
+            { href: '/settings', label: 'Settings', icon: <Settings size={18} /> },
         ];
     }
     if (role === 'Admin') {
         return [
             { href: '/admin', label: 'Dashboard', icon: <LayoutDashboard size={18} /> },
+            { href: '/admin/properties', label: 'Properties', icon: <Home size={18} /> },
             { href: '/admin/contracts', label: 'Contracts', icon: <FileText size={18} /> },
             { href: '/admin/rent-schedule', label: 'Rent Schedule', icon: <Calendar size={18} /> },
+            { href: '/profile', label: 'Profile', icon: <User size={18} /> },
+            { href: '/settings', label: 'Settings', icon: <Settings size={18} /> },
         ];
     }
     return [
@@ -40,13 +49,46 @@ function roleNavItems(role: string | null): NavItem[] {
         { href: '/tenant/payment', label: 'Make Payment', icon: <CreditCard size={18} /> },
         { href: '/tenant/contracts', label: 'Contracts', icon: <FileText size={18} /> },
         { href: '/tenant/notifications', label: 'Notifications', icon: <Bell size={18} /> },
+        { href: '/profile', label: 'Profile', icon: <User size={18} /> },
+        { href: '/settings', label: 'Settings', icon: <Settings size={18} /> },
     ];
 }
 
+const SWITCH_ROLES = ['SuperAdmin', 'Admin', 'Tenant', 'Tester'] as const;
+
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-    const { accessToken, role, isLoading, logout } = useAuth();
+    const { accessToken, role, isSuperAdminSwitched, isLoading, logout } = useAuth();
     const router = useRouter();
     const pathname = usePathname();
+    const [profileChecked, setProfileChecked] = useState(false);
+
+    const canSwitchRoles = role === 'SuperAdmin' || isSuperAdminSwitched;
+
+    // Redirect to profile-setup if the user hasn't completed their profile yet
+    useEffect(() => {
+        if (!accessToken || isLoading || pathname === '/profile-setup' || profileChecked) return;
+        authApi.getProfile()
+            .then(p => {
+                setProfileChecked(true);
+                if (!p.isProfileComplete) router.push('/profile-setup');
+            })
+            .catch(() => setProfileChecked(true));
+    }, [accessToken, isLoading, pathname, profileChecked, router]);
+
+    async function handleSwitchRole(targetRole: string) {
+        try {
+            const { authApi } = await import('@/lib/api/auth');
+            const { accessToken: newToken } = await authApi.switchRole(targetRole);
+            localStorage.setItem('accessToken', newToken);
+            if (targetRole === 'SuperAdmin') router.push('/super-admin');
+            else if (targetRole === 'Admin') router.push('/admin');
+            else if (targetRole === 'Tester') router.push('/super-admin/tests');
+            else router.push('/tenant');
+            window.location.reload();
+        } catch (e) {
+            console.error('Role switch failed', e);
+        }
+    }
 
     useEffect(() => {
         if (!isLoading && !accessToken) {
@@ -108,6 +150,35 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                         );
                     })}
                 </nav>
+
+                {/* Role switcher (SuperAdmin only) */}
+                {canSwitchRoles && (
+                    <div className="px-3 pb-3 border-t border-zinc-800 pt-3">
+                        <p className="text-[10px] uppercase tracking-widest text-zinc-600 font-medium px-2 mb-1.5">
+                            View as role
+                        </p>
+                        <div className="grid grid-cols-2 gap-1">
+                            {SWITCH_ROLES.map(r => (
+                                <button
+                                    key={r}
+                                    onClick={() => handleSwitchRole(r)}
+                                    className={`px-2 py-1.5 rounded-md text-xs transition-colors text-left ${
+                                        role === r
+                                            ? 'bg-indigo-600/20 text-indigo-400 font-medium'
+                                            : 'text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300'
+                                    }`}
+                                >
+                                    {r}
+                                </button>
+                            ))}
+                        </div>
+                        {isSuperAdminSwitched && (
+                            <p className="text-[10px] text-yellow-500/70 px-2 mt-1.5">
+                                Viewing as {role} — your actual account is SuperAdmin
+                            </p>
+                        )}
+                    </div>
+                )}
 
                 {/* Sign out */}
                 <div className="px-3 py-4 border-t border-zinc-800">

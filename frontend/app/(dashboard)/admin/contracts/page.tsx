@@ -2,7 +2,9 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { contractsApi } from '@/lib/api/contracts';
-import { Contract } from '@/types';
+import { authApi } from '@/lib/api/auth';
+import { transactionsApi } from '@/lib/api/transactions';
+import { Contract, User, Unit } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -11,6 +13,8 @@ import { Label } from '@/components/ui/label';
 
 export default function AdminContractsPage() {
     const [contracts, setContracts] = useState<Contract[]>([]);
+    const [tenants, setTenants] = useState<User[]>([]);
+    const [units, setUnits] = useState<Unit[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isUploading, setIsUploading] = useState(false);
     const [tenantId, setTenantId] = useState('');
@@ -20,7 +24,11 @@ export default function AdminContractsPage() {
     const fileRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
-        load();
+        Promise.all([
+            load(),
+            authApi.getUsers('Tenant').then(setTenants),
+            transactionsApi.getUnits().then(setUnits),
+        ]).catch(console.error);
     }, []);
 
     async function load() {
@@ -51,7 +59,7 @@ export default function AdminContractsPage() {
             setUnitId('');
             if (fileRef.current) fileRef.current.value = '';
             await load();
-        } catch (e) {
+        } catch {
             setUploadError('Failed to upload contract. Please try again.');
         } finally {
             setIsUploading(false);
@@ -66,6 +74,9 @@ export default function AdminContractsPage() {
             console.error(e);
         }
     }
+
+    const selectClass =
+        'flex h-9 w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-1 text-sm text-zinc-100 shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:cursor-not-allowed disabled:opacity-50';
 
     if (isLoading) return <div>Loading...</div>;
 
@@ -82,24 +93,34 @@ export default function AdminContractsPage() {
                     <form onSubmit={handleUpload} className="space-y-4">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="space-y-2">
-                                <Label htmlFor="tenantId">Tenant ID</Label>
-                                <Input
+                                <Label htmlFor="tenantId">Tenant</Label>
+                                <select
                                     id="tenantId"
                                     value={tenantId}
                                     onChange={e => setTenantId(e.target.value)}
-                                    placeholder="Tenant UUID"
                                     required
-                                />
+                                    className={selectClass}
+                                >
+                                    <option value="">Select a tenant…</option>
+                                    {tenants.map(t => (
+                                        <option key={t.id} value={t.id}>{t.email}</option>
+                                    ))}
+                                </select>
                             </div>
                             <div className="space-y-2">
-                                <Label htmlFor="unitId">Unit ID</Label>
-                                <Input
+                                <Label htmlFor="unitId">Unit</Label>
+                                <select
                                     id="unitId"
                                     value={unitId}
                                     onChange={e => setUnitId(e.target.value)}
-                                    placeholder="Unit UUID"
                                     required
-                                />
+                                    className={selectClass}
+                                >
+                                    <option value="">Select a unit…</option>
+                                    {units.map(u => (
+                                        <option key={u.id} value={u.id}>{u.unitNumber}</option>
+                                    ))}
+                                </select>
                             </div>
                         </div>
                         <div className="space-y-2">

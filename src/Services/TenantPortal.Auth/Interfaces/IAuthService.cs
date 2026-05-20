@@ -1,4 +1,5 @@
 using TenantPortal.Auth.DTOs;
+using TenantPortal.Shared.Enums;
 
 namespace TenantPortal.Auth.Interfaces
 {
@@ -52,5 +53,57 @@ namespace TenantPortal.Auth.Interfaces
         /// <param name="createdBy">ID of the Admin or Super Admin sending the invite.</param>
         /// <returns>Success flag and a user-facing error message (null on success).</returns>
         Task<(bool Success, string? Error)> SendInviteAsync(InviteRequestDTO request, Guid createdBy);
+
+        /// <summary>
+        /// Dev-only login that skips TOTP. Only works for the hardcoded dev test accounts.
+        /// Returns <c>null</c> if credentials are wrong or the account is not a dev account.
+        /// </summary>
+        Task<LoginResponseDTO?> DevLoginAsync(string email, string password);
+
+        /// <summary>
+        /// Issues a new access token with <paramref name="targetRole"/> for a SuperAdmin.
+        /// When <paramref name="targetRole"/> is <see cref="UserRole.SuperAdmin"/>, returns a normal
+        /// (un-switched) token. All other roles produce a switched token with <c>is_switched=true</c>.
+        /// </summary>
+        Task<string?> SwitchRoleAsync(Guid superAdminId, UserRole targetRole);
+
+        /// <summary>
+        /// Returns active, non-deleted users. Admins only see users they invited;
+        /// SuperAdmins see everyone.
+        /// </summary>
+        /// <param name="role">Optional role filter. <c>null</c> returns all roles.</param>
+        /// <param name="callerId">ID of the requesting user (used for Admin scoping).</param>
+        /// <param name="callerRole">Role of the requesting user.</param>
+        Task<IEnumerable<UserListItemDTO>> GetUsersAsync(UserRole? role, Guid callerId, UserRole callerRole);
+
+        /// <summary>Returns the full profile (email, role, profile fields, notification emails) for the given user.</summary>
+        Task<UserProfileDTO?> GetUserProfileAsync(Guid userId);
+
+        /// <summary>Creates or updates the user's personal profile. Marks IsProfileComplete = true on first save.</summary>
+        Task<string?> UpdateUserProfileAsync(Guid userId, UpdateUserProfileRequestDTO request);
+
+        /// <summary>Adds a notification email address. Returns error string or null on success.</summary>
+        Task<string?> AddNotificationEmailAsync(Guid userId, string email);
+
+        /// <summary>Removes a notification email by ID. Returns false if not found or belongs to another user.</summary>
+        Task<bool> DeleteNotificationEmailAsync(Guid userId, Guid emailId);
+
+        /// <summary>
+        /// Changes the user's primary login email after verifying the current password.
+        /// Returns an error string on failure, or <c>null</c> on success.
+        /// </summary>
+        Task<string?> UpdatePrimaryEmailAsync(Guid userId, string newEmail, string currentPassword);
+
+        /// <summary>
+        /// Changes the user's password after verifying the current password.
+        /// Returns an error string on failure, or <c>null</c> on success.
+        /// </summary>
+        Task<string?> ChangePasswordAsync(Guid userId, string currentPassword, string newPassword);
+
+        /// <summary>
+        /// Soft-deletes the user's account. The caller must supply their own email address as
+        /// confirmation. Returns an error string on failure, or <c>null</c> on success.
+        /// </summary>
+        Task<string?> DeleteAccountAsync(Guid userId, string confirmEmail);
     }
 }

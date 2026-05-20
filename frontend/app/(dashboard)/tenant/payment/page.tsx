@@ -103,7 +103,7 @@ function CheckoutForm({ total, onBack }: CheckoutFormProps) {
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function PaymentPage() {
-    const { userId } = useAuth();
+    useAuth();
 
     const [step, setStep] = useState<Step>('setup');
     const [schedule, setSchedule] = useState<RentSchedule | null>(null);
@@ -115,16 +115,15 @@ export default function PaymentPage() {
     const [intentError, setIntentError] = useState('');
     const [isCreatingIntent, setIsCreatingIntent] = useState(false);
 
-    // Load the tenant's rent schedule to pre-fill the amount and get the scheduleId
+    // Load the tenant's rent schedule — handles both PerTenant and SharedUnit billing modes
     useEffect(() => {
-        if (!userId) return;
-        transactionsApi.getRentSchedule(userId)
+        transactionsApi.getMyRentSchedule()
             .then(s => {
                 setSchedule(s);
                 setAmount(s.monthlyAmount.toFixed(2));
             })
             .catch(() => setScheduleError(true));
-    }, [userId]);
+    }, []);
 
     const parsedAmount = parseFloat(amount) || 0;
     const feeCalc = method === 'card'

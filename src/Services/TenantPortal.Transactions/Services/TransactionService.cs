@@ -168,7 +168,7 @@ namespace TenantPortal.Transactions.Services
                     Status = TransactionStatus.Pending,
                     PaymentMethod = request.PaymentMethod,
                     ExternalMethodNote = request.Note,
-                    PaidDate = request.PaidDate,
+                    PaidDate = DateTime.SpecifyKind(request.PaidDate, DateTimeKind.Utc),
                     CreatedBy = tenantId,
                     CreatedAt = DateTime.UtcNow,
                     UpdatedAt = DateTime.UtcNow,

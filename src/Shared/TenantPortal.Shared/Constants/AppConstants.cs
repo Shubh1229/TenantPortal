@@ -16,6 +16,12 @@ namespace TenantPortal.Shared.Constants
 
             /// <summary>Claim containing the user's email address.</summary>
             public const string Email = "email";
+
+            /// <summary>
+            /// Present and set to "true" when a SuperAdmin is viewing the app in a downgraded role.
+            /// The <see cref="UserId"/> claim still holds the real SuperAdmin ID.
+            /// </summary>
+            public const string IsSuperAdminSwitched = "is_switched";
         }
 
         /// <summary>Authorization policy names registered in each service's DI container.</summary>

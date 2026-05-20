@@ -109,4 +109,12 @@ using (var scope = app.Services.CreateScope())
     await DbSeeder.SeedAsync(context, secrets, totpEnc);
 }
 
+if (app.Environment.IsDevelopment())
+{
+    using var scope = app.Services.CreateScope();
+    var context = scope.ServiceProvider.GetRequiredService<AuthDbContext>();
+    var totpEnc = scope.ServiceProvider.GetRequiredService<ITotpEncryptionService>();
+    await DbSeeder.SeedDevAccountsAsync(context, totpEnc);
+}
+
 app.Run();

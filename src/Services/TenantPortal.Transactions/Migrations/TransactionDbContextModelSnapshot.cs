@@ -82,7 +82,7 @@ namespace TenantPortal.Transactions.Migrations
                     b.Property<DateTime>("StartDate")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<Guid>("TenantId")
+                    b.Property<Guid?>("TenantId")
                         .HasColumnType("uuid");
 
                     b.Property<Guid>("UnitId")
@@ -203,6 +203,9 @@ namespace TenantPortal.Transactions.Migrations
                     b.Property<int?>("Bedrooms")
                         .HasColumnType("integer");
 
+                    b.Property<int>("BillingMode")
+                        .HasColumnType("integer");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -229,6 +232,10 @@ namespace TenantPortal.Transactions.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("PropertyId", "UnitNumber")
+                        .IsUnique()
+                        .HasFilter("\"IsDeleted\" = false");
 
                     b.ToTable("Units");
                 });

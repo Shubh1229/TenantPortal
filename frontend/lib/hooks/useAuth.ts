@@ -7,6 +7,7 @@ interface AuthState {
     accessToken: string | null;
     role: UserRole | null;
     userId: string | null;
+    isSuperAdminSwitched: boolean;
     isLoading: boolean;
 }
 
@@ -25,19 +26,20 @@ export function useAuth() {
         accessToken: null,
         role: null,
         userId: null,
+        isSuperAdminSwitched: false,
         isLoading: true,
     });
 
     useEffect(() => {
         const token = localStorage.getItem('accessToken');
         if (!token) {
-            setAuth({ accessToken: null, role: null, userId: null, isLoading: false });
+            setAuth({ accessToken: null, role: null, userId: null, isSuperAdminSwitched: false, isLoading: false });
             return;
         }
 
         const payload = parseJwt(token);
         if (!payload) {
-            setAuth({ accessToken: null, role: null, userId: null, isLoading: false });
+            setAuth({ accessToken: null, role: null, userId: null, isSuperAdminSwitched: false, isLoading: false });
             return;
         }
 
@@ -45,6 +47,7 @@ export function useAuth() {
             accessToken: token,
             role: payload.role as UserRole,
             userId: payload.uid,
+            isSuperAdminSwitched: payload.is_switched === 'true',
             isLoading: false,
         });
     }, []);
@@ -52,7 +55,7 @@ export function useAuth() {
     const logout = () => {
         localStorage.removeItem('accessToken');
         localStorage.removeItem('refreshToken');
-        setAuth({ accessToken: null, role: null, userId: null, isLoading: false });
+        setAuth({ accessToken: null, role: null, userId: null, isSuperAdminSwitched: false, isLoading: false });
         window.location.href = '/login';
     };
 

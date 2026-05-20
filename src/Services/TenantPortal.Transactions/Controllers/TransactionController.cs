@@ -160,6 +160,21 @@ namespace TenantPortal.Transactions.Controllers
         // ── Rent Schedule Endpoints ─────────────────────────────────────────────────
 
         /// <summary>
+        /// Returns the rent schedule for the calling tenant — handles both PerTenant and SharedUnit billing modes.
+        /// </summary>
+        [Authorize(Policy = AppConstants.Policies.RequireTenant)]
+        [HttpGet("/api/rent-schedule/my")]
+        public async Task<IActionResult> GetMyRentScheduleAsync()
+        {
+            var (userId, _) = GetUserIdAndRole();
+            if (userId == null) return BadRequest("Invalid user ID in token");
+
+            var schedule = await _rentScheduleService.GetMyRentScheduleAsync(userId.Value);
+            if (schedule == null) return NotFound("Rent schedule not found.");
+            return Ok(schedule);
+        }
+
+        /// <summary>
         /// Returns the rent schedule for the specified tenant.
         /// Tenants may only retrieve their own schedule.
         /// </summary>
@@ -177,6 +192,17 @@ namespace TenantPortal.Transactions.Controllers
             var schedule = await _rentScheduleService.GetRentScheduleAsync(tenantId);
             if (schedule == null) return NotFound("Rent schedule not found.");
             return Ok(schedule);
+        }
+
+        /// <summary>Returns all rent schedules scoped to the caller. Admins see only schedules they created.</summary>
+        [Authorize(Policy = AppConstants.Policies.RequireAdmin)]
+        [HttpGet("/api/rent-schedules")]
+        public async Task<IActionResult> GetAllRentSchedulesAsync()
+        {
+            var (userId, role) = GetUserIdAndRole();
+            if (userId == null || role == null) return BadRequest("Invalid user ID or role in token");
+            var schedules = await _rentScheduleService.GetAllRentSchedulesAsync(userId.Value, role.Value);
+            return Ok(schedules);
         }
 
         /// <summary>Creates a rent schedule for a tenant. Admin and Super Admin only.</summary>

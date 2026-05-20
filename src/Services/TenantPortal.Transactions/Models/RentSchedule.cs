@@ -9,8 +9,12 @@ namespace TenantPortal.Transactions.Models
         /// <summary>Primary key.</summary>
         public required Guid Id { get; set; }
 
-        /// <summary>The tenant this schedule applies to.</summary>
-        public required Guid TenantId { get; set; }
+        /// <summary>
+        /// The tenant this schedule applies to.
+        /// <c>null</c> for <see cref="TenantPortal.Shared.Enums.BillingMode.SharedUnit"/> schedules,
+        /// which belong to the unit rather than a specific tenant.
+        /// </summary>
+        public Guid? TenantId { get; set; }
 
         /// <summary>The unit associated with this rent schedule.</summary>
         public required Guid UnitId { get; set; }

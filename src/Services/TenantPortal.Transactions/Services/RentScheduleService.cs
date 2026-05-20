@@ -34,6 +34,14 @@ namespace TenantPortal.Transactions.Services
         public async Task<bool> CreateRentScheduleAsync(CreateRentScheduleRequestDTO request, Guid userId, UserRole role)
         {
             if (role == UserRole.Tenant) return false;
+
+            // Validate: PerTenant schedules require a TenantId; SharedUnit schedules must not have one.
+            var unit = await _context.Units.FirstOrDefaultAsync(u => u.Id == request.UnitId && !u.IsDeleted);
+            if (unit == null) return false;
+
+            if (unit.BillingMode == BillingMode.PerTenant && request.TenantId == null) return false;
+            if (unit.BillingMode == BillingMode.SharedUnit) request.TenantId = null;
+
             RentSchedule schedule = new RentSchedule
             {
                 Id = Guid.NewGuid(),
@@ -41,7 +49,7 @@ namespace TenantPortal.Transactions.Services
                 UnitId = request.UnitId,
                 MonthlyAmount = request.MonthlyAmount,
                 DueDayOfMonth = request.DueDayOfMonth,
-                StartDate = request.StartDate,
+                StartDate = DateTime.SpecifyKind(request.StartDate, DateTimeKind.Utc),
                 CreatedBy = userId,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow,
@@ -56,8 +64,35 @@ namespace TenantPortal.Transactions.Services
 
         public async Task<RentSchedule?> GetRentScheduleAsync(Guid tenantId)
         {
-            var schedule = await _context.RentSchedules.FirstOrDefaultAsync(s => s.TenantId == tenantId);
-            return schedule;
+            return await _context.RentSchedules.FirstOrDefaultAsync(s => s.TenantId == tenantId);
+        }
+
+        /// <summary>
+        /// Returns the rent schedule relevant to a tenant — handles both PerTenant and SharedUnit modes.
+        /// Finds the tenant's active unit assignment, then returns the appropriate schedule.
+        /// </summary>
+        public async Task<RentSchedule?> GetMyRentScheduleAsync(Guid tenantId)
+        {
+            // First check for a per-tenant schedule (works regardless of billing mode)
+            var perTenantSchedule = await _context.RentSchedules
+                .FirstOrDefaultAsync(s => s.TenantId == tenantId);
+            if (perTenantSchedule != null) return perTenantSchedule;
+
+            // Fall back to shared-unit schedule via the tenant's active assignment
+            var assignment = await _context.TenantUnitAssignments
+                .FirstOrDefaultAsync(a => a.TenantId == tenantId && a.EndDate == null);
+            if (assignment == null) return null;
+
+            return await _context.RentSchedules
+                .FirstOrDefaultAsync(s => s.UnitId == assignment.UnitId && s.TenantId == null);
+        }
+
+        public async Task<List<RentSchedule>> GetAllRentSchedulesAsync(Guid userId, UserRole role)
+        {
+            var query = _context.RentSchedules.AsQueryable();
+            if (role == UserRole.Admin)
+                query = query.Where(r => r.CreatedBy == userId);
+            return await query.ToListAsync();
         }
 
         public async Task<bool> UpdateRentScheduleAsync(UpdateRentScheduleRequestDTO request, Guid userId, UserRole role)
