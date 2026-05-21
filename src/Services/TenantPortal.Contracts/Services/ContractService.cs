@@ -134,7 +134,12 @@ namespace TenantPortal.Contracts.Services
                     c.UpdatedAt = DateTime.UtcNow;
                 }
                 await _blobContainerClient.CreateIfNotExistsAsync();
-                await _blobContainerClient.GetBlobClient(contract.BlobStoragePath).UploadAsync(request.File.OpenReadStream());
+                await _blobContainerClient.GetBlobClient(contract.BlobStoragePath).UploadAsync(
+                    request.File.OpenReadStream(),
+                    new Azure.Storage.Blobs.Models.BlobUploadOptions
+                    {
+                        HttpHeaders = new Azure.Storage.Blobs.Models.BlobHttpHeaders { ContentType = "application/pdf" }
+                    });
                 await _context.Contracts.AddAsync(contract);
                 await _context.SaveChangesAsync();
                 return true;
@@ -167,7 +172,9 @@ namespace TenantPortal.Contracts.Services
 
                 // Upload to blob storage
                 await _blobContainerClient.CreateIfNotExistsAsync();
-                await _blobContainerClient.GetBlobClient(blobPath).UploadAsync(pdfStream, overwrite: true);
+                var seedBlob = _blobContainerClient.GetBlobClient(blobPath);
+                await seedBlob.UploadAsync(pdfStream, overwrite: true);
+                await seedBlob.SetHttpHeadersAsync(new Azure.Storage.Blobs.Models.BlobHttpHeaders { ContentType = "application/pdf" });
 
                 await _context.Contracts.AddAsync(new Contract
                 {
@@ -226,6 +233,7 @@ namespace TenantPortal.Contracts.Services
                     BlobName = blobPath,
                     Resource = "b",
                     ContentDisposition = "inline",
+                    ContentType = "application/pdf",
                 };
                 return blobClient.GenerateSasUri(builder).ToString();
             }

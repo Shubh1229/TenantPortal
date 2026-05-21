@@ -17,6 +17,7 @@ import {
     Home,
     Settings,
     User,
+    ArrowLeftRight,
 } from 'lucide-react';
 
 interface NavItem {
@@ -38,6 +39,7 @@ function roleNavItems(role: string | null): NavItem[] {
         return [
             { href: '/admin', label: 'Dashboard', icon: <LayoutDashboard size={18} /> },
             { href: '/admin/properties', label: 'Properties', icon: <Home size={18} /> },
+            { href: '/admin/transactions', label: 'Transactions', icon: <ArrowLeftRight size={18} /> },
             { href: '/admin/contracts', label: 'Contracts', icon: <FileText size={18} /> },
             { href: '/admin/rent-schedule', label: 'Rent Schedule', icon: <Calendar size={18} /> },
             { href: '/profile', label: 'Profile', icon: <User size={18} /> },
@@ -47,6 +49,7 @@ function roleNavItems(role: string | null): NavItem[] {
     return [
         { href: '/tenant', label: 'Dashboard', icon: <LayoutDashboard size={18} /> },
         { href: '/tenant/payment', label: 'Make Payment', icon: <CreditCard size={18} /> },
+        { href: '/tenant/transactions', label: 'Transactions', icon: <ArrowLeftRight size={18} /> },
         { href: '/tenant/contracts', label: 'Contracts', icon: <FileText size={18} /> },
         { href: '/tenant/notifications', label: 'Notifications', icon: <Bell size={18} /> },
         { href: '/profile', label: 'Profile', icon: <User size={18} /> },

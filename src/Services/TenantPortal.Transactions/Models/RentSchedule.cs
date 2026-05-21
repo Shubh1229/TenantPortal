@@ -31,6 +31,9 @@ namespace TenantPortal.Transactions.Models
         /// <summary>Date the schedule became or becomes effective.</summary>
         public required DateTime StartDate { get; set; }
 
+        /// <summary>Optional date on which this schedule expires. Defaults to one year after StartDate.</summary>
+        public DateTime? EndDate { get; set; }
+
         /// <summary>ID of the Admin or Super Admin who created this schedule.</summary>
         public required Guid CreatedBy { get; set; }
 

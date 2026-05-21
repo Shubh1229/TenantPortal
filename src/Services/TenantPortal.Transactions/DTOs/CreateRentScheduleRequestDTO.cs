@@ -20,5 +20,8 @@ namespace TenantPortal.Transactions.DTOs
 
         /// <summary>Date on which this schedule takes effect.</summary>
         public required DateTime StartDate { get; set; }
+
+        /// <summary>Optional end date. Defaults to one year after StartDate if not provided.</summary>
+        public DateTime? EndDate { get; set; }
     }
 }

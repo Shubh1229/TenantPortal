@@ -113,6 +113,22 @@ namespace TenantPortal.Transactions.Services
                     await _context.SaveChangesAsync();
                     _logger.LogInformation("Transaction {TransactionId} confirmed via Stripe webhook for PaymentIntent {PaymentIntentId}.", transaction.Id, paymentIntent.Id);
                 }
+                else if (stripeEvent.Type == "payment_intent.payment_failed")
+                {
+                    var paymentIntent = stripeEvent.Data.Object as PaymentIntent;
+                    if (paymentIntent == null) return false;
+                    var transaction = await _context.Transactions
+                        .FirstOrDefaultAsync(t => t.StripePaymentIntentId == paymentIntent.Id);
+                    if (transaction == null)
+                    {
+                        _logger.LogWarning("Received payment_intent.payment_failed for unknown PaymentIntent {PaymentIntentId}.", paymentIntent.Id);
+                        return true;
+                    }
+                    transaction.Status = TransactionStatus.Declined;
+                    transaction.UpdatedAt = DateTime.UtcNow;
+                    await _context.SaveChangesAsync();
+                    _logger.LogWarning("Transaction {TransactionId} declined — PaymentIntent {PaymentIntentId} failed. Tenant: {TenantId}.", transaction.Id, paymentIntent.Id, transaction.TenantId);
+                }
                 return true;
             }
             catch (StripeException ex)

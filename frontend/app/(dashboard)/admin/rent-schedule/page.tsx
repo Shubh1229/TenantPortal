@@ -23,6 +23,7 @@ export default function RentSchedulePage() {
     const [monthlyAmount, setMonthlyAmount] = useState('');
     const [dueDayOfMonth, setDueDayOfMonth] = useState('1');
     const [startDate, setStartDate] = useState('');
+    const [endDate, setEndDate] = useState('');
     const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
     const [error, setError] = useState('');
 
@@ -30,6 +31,7 @@ export default function RentSchedulePage() {
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editAmount, setEditAmount] = useState('');
     const [editDueDay, setEditDueDay] = useState('');
+    const [editEndDate, setEditEndDate] = useState('');
     const [editStatus, setEditStatus] = useState<'idle' | 'saving' | 'error'>('idle');
 
     useEffect(() => { loadAll(); }, []);
@@ -74,10 +76,11 @@ export default function RentSchedulePage() {
                     monthlyAmount: parseFloat(monthlyAmount),
                     dueDayOfMonth: parseInt(dueDayOfMonth),
                     startDate,
+                    endDate: endDate || undefined,
                 },
             });
             setStatus('success');
-            setUnitId(''); setTenantId(''); setMonthlyAmount(''); setDueDayOfMonth('1'); setStartDate('');
+            setUnitId(''); setTenantId(''); setMonthlyAmount(''); setDueDayOfMonth('1'); setStartDate(''); setEndDate('');
             await loadAll();
         } catch {
             setStatus('error');
@@ -89,6 +92,7 @@ export default function RentSchedulePage() {
         setEditingId(s.id);
         setEditAmount(s.monthlyAmount.toFixed(2));
         setEditDueDay(s.dueDayOfMonth.toString());
+        setEditEndDate(s.endDate ? s.endDate.slice(0, 10) : '');
         setEditStatus('idle');
     }
 
@@ -103,6 +107,7 @@ export default function RentSchedulePage() {
             await transactionsApi.updateRentSchedule(id, {
                 monthlyAmount: parseFloat(editAmount),
                 dueDayOfMonth: parseInt(editDueDay),
+                endDate: editEndDate || undefined,
             });
             setEditingId(null);
             await loadAll();
@@ -159,7 +164,7 @@ export default function RentSchedulePage() {
                                                 <span className="text-zinc-600">·</span>
                                                 <span className="text-zinc-500">{unitLabel(s.unitId)}</span>
                                             </div>
-                                            <div className="grid grid-cols-2 gap-3">
+                                            <div className="grid grid-cols-3 gap-3">
                                                 <div className="space-y-1">
                                                     <Label className="text-xs text-zinc-400">Monthly Amount ($)</Label>
                                                     <Input
@@ -179,6 +184,15 @@ export default function RentSchedulePage() {
                                                         max="28"
                                                         value={editDueDay}
                                                         onChange={e => setEditDueDay(e.target.value)}
+                                                        className="h-8 bg-zinc-800 border-zinc-700 text-zinc-100 text-sm"
+                                                    />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <Label className="text-xs text-zinc-400">End Date (optional)</Label>
+                                                    <Input
+                                                        type="date"
+                                                        value={editEndDate}
+                                                        onChange={e => setEditEndDate(e.target.value)}
                                                         className="h-8 bg-zinc-800 border-zinc-700 text-zinc-100 text-sm"
                                                     />
                                                 </div>
@@ -217,7 +231,7 @@ export default function RentSchedulePage() {
                                             <div className="flex items-center gap-4">
                                                 <div className="text-right text-xs text-zinc-400 space-y-0.5">
                                                     <div>${s.monthlyAmount.toLocaleString()}/month</div>
-                                                    <div>Due on the {s.dueDayOfMonth}{ordinal(s.dueDayOfMonth)} · starts {new Date(s.startDate).toLocaleDateString()}</div>
+                                                    <div>Due {s.dueDayOfMonth}{ordinal(s.dueDayOfMonth)} · {new Date(s.startDate).toLocaleDateString()} – {s.endDate ? new Date(s.endDate).toLocaleDateString() : '—'}</div>
                                                 </div>
                                                 <div className="flex gap-1.5 shrink-0">
                                                     <button
@@ -297,9 +311,16 @@ export default function RentSchedulePage() {
                                     className="bg-zinc-900 border-zinc-700 text-zinc-100" />
                                 <p className="text-xs text-zinc-500">Max 28 to avoid month-end issues.</p>
                             </div>
-                            <div className="space-y-2 md:col-span-2">
+                            <div className="space-y-2">
                                 <Label htmlFor="startDate" className="text-zinc-300">Schedule Start Date</Label>
                                 <Input id="startDate" type="date" value={startDate} onChange={e => setStartDate(e.target.value)} required
+                                    className="bg-zinc-900 border-zinc-700 text-zinc-100" />
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="endDate" className="text-zinc-300">
+                                    End Date <span className="text-zinc-500 font-normal">(optional, defaults to 1 year)</span>
+                                </Label>
+                                <Input id="endDate" type="date" value={endDate} onChange={e => setEndDate(e.target.value)}
                                     className="bg-zinc-900 border-zinc-700 text-zinc-100" />
                             </div>
                         </div>

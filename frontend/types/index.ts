@@ -117,6 +117,7 @@ export interface RentSchedule {
   monthlyAmount: number;
   dueDayOfMonth: number;
   startDate: string;
+  endDate?: string;
 }
 
 export interface ReminderSetting {

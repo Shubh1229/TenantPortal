@@ -42,6 +42,7 @@ namespace TenantPortal.Transactions.Services
             if (unit.BillingMode == BillingMode.PerTenant && request.TenantId == null) return false;
             if (unit.BillingMode == BillingMode.SharedUnit) request.TenantId = null;
 
+            var startUtc = DateTime.SpecifyKind(request.StartDate, DateTimeKind.Utc);
             RentSchedule schedule = new RentSchedule
             {
                 Id = Guid.NewGuid(),
@@ -49,7 +50,10 @@ namespace TenantPortal.Transactions.Services
                 UnitId = request.UnitId,
                 MonthlyAmount = request.MonthlyAmount,
                 DueDayOfMonth = request.DueDayOfMonth,
-                StartDate = DateTime.SpecifyKind(request.StartDate, DateTimeKind.Utc),
+                StartDate = startUtc,
+                EndDate = request.EndDate.HasValue
+                    ? DateTime.SpecifyKind(request.EndDate.Value, DateTimeKind.Utc)
+                    : startUtc.AddYears(1),
                 CreatedBy = userId,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow,
@@ -104,6 +108,7 @@ namespace TenantPortal.Transactions.Services
                 if (schedule == null) return false;
                 if (request.DueDayOfMonth != null) schedule.DueDayOfMonth = request.DueDayOfMonth.Value;
                 if (request.MonthlyAmount != null) schedule.MonthlyAmount = request.MonthlyAmount.Value;
+                if (request.EndDate != null) schedule.EndDate = DateTime.SpecifyKind(request.EndDate.Value, DateTimeKind.Utc);
                 schedule.UpdatedAt = DateTime.UtcNow;
                 await _context.SaveChangesAsync();
                 return true;

@@ -11,5 +11,8 @@ namespace TenantPortal.Transactions.DTOs
 
         /// <summary>New due day of month (1–31), if being updated.</summary>
         public int? DueDayOfMonth { get; set; }
+
+        /// <summary>New end date, if being updated.</summary>
+        public DateTime? EndDate { get; set; }
     }
 }

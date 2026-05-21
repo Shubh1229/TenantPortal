@@ -6,19 +6,15 @@ import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-
 import { useAuth } from '@/lib/hooks/useAuth';
 import { transactionsApi } from '@/lib/api/transactions';
 import { RentSchedule } from '@/types';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { cardTotalWithFee, achTotalWithFee, formatCurrency } from '@/lib/utils/stripe';
-import { CreditCard, Building2, Info, ArrowLeft } from 'lucide-react';
+import { CreditCard, Building2, Info, ArrowLeft, Send } from 'lucide-react';
 
-// Stripe instance — created once outside the component tree
-const stripePromise = loadStripe(
-    process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? ''
-);
+const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? '');
 
-// Dark theme appearance for Stripe Elements, matching our zinc palette
 const stripeAppearance = {
     theme: 'night' as const,
     variables: {
@@ -35,10 +31,8 @@ const stripeAppearance = {
     },
 };
 
-type PaymentMethodType = 'card' | 'ach';
+type PaymentMethodType = 'card' | 'ach' | 'external';
 type Step = 'setup' | 'pay';
-
-// ── Inner checkout form — must live inside <Elements> ─────────────────────────
 
 interface CheckoutFormProps {
     total: number;
@@ -60,12 +54,10 @@ function CheckoutForm({ total, onBack }: CheckoutFormProps) {
         const { error: confirmError } = await stripe.confirmPayment({
             elements,
             confirmParams: {
-                // Stripe redirects here after 3DS / bank auth flows
                 return_url: `${window.location.origin}/tenant/payment/complete`,
             },
         });
 
-        // confirmPayment only returns here if there's an error or the redirect didn't happen
         if (confirmError) {
             setError(confirmError.message ?? 'Payment failed — please try again.');
         }
@@ -74,11 +66,7 @@ function CheckoutForm({ total, onBack }: CheckoutFormProps) {
 
     return (
         <form onSubmit={handleSubmit} className="space-y-5">
-            <PaymentElement
-                options={{
-                    layout: 'tabs',
-                }}
-            />
+            <PaymentElement options={{ layout: 'tabs' }} />
             {error && <p className="text-sm text-red-400">{error}</p>}
             <Button
                 type="submit"
@@ -100,8 +88,6 @@ function CheckoutForm({ total, onBack }: CheckoutFormProps) {
     );
 }
 
-// ── Main page ─────────────────────────────────────────────────────────────────
-
 export default function PaymentPage() {
     useAuth();
 
@@ -115,7 +101,13 @@ export default function PaymentPage() {
     const [intentError, setIntentError] = useState('');
     const [isCreatingIntent, setIsCreatingIntent] = useState(false);
 
-    // Load the tenant's rent schedule — handles both PerTenant and SharedUnit billing modes
+    // External payment form
+    const [extMethod, setExtMethod] = useState('Zelle');
+    const [extPaidDate, setExtPaidDate] = useState(new Date().toISOString().slice(0, 10));
+    const [extNote, setExtNote] = useState('');
+    const [extSubmitting, setExtSubmitting] = useState(false);
+    const [extResult, setExtResult] = useState<'success' | 'error' | null>(null);
+
     useEffect(() => {
         transactionsApi.getMyRentSchedule()
             .then(s => {
@@ -151,14 +143,42 @@ export default function PaymentPage() {
         }
     }
 
-    // ── Setup step ────────────────────────────────────────────────────────────
+    async function handleExternalSubmit(e: React.FormEvent) {
+        e.preventDefault();
+        if (!schedule || parsedAmount <= 0) return;
+        setExtSubmitting(true);
+        setExtResult(null);
+        try {
+            await transactionsApi.submitExternal({
+                unitId: schedule.unitId,
+                amount: parsedAmount,
+                paymentMethod: 'External',
+                paidDate: new Date(extPaidDate).toISOString(),
+                note: `${extMethod}${extNote ? ` — ${extNote}` : ''}`,
+            });
+            setExtResult('success');
+            setAmount('');
+            setExtNote('');
+        } catch {
+            setExtResult('error');
+        } finally {
+            setExtSubmitting(false);
+        }
+    }
+
+    const methodOptions: { id: PaymentMethodType; label: string; sub: string; icon: React.ReactNode }[] = [
+        { id: 'card', label: 'Card', sub: '2.9% + $0.30', icon: <CreditCard size={18} /> },
+        { id: 'ach', label: 'ACH Direct Debit', sub: '0.8%, max $5', icon: <Building2 size={18} /> },
+        { id: 'external', label: 'External', sub: 'Zelle, check, wire', icon: <Send size={18} /> },
+    ];
+
     if (step === 'setup') {
         return (
             <div className="max-w-lg mx-auto space-y-6">
                 <div>
                     <h1 className="text-2xl font-semibold text-white">Make a Payment</h1>
                     <p className="text-sm text-zinc-500 mt-0.5">
-                        Stripe processing fee passed through at cost — no markup.
+                        Card and ACH are processed instantly via Stripe. External payments require admin approval.
                     </p>
                 </div>
 
@@ -168,114 +188,175 @@ export default function PaymentPage() {
                     </div>
                 )}
 
-                <form onSubmit={handleProceed} className="space-y-5">
-                    {/* Method selector */}
-                    <div>
-                        <Label className="text-zinc-300 mb-2 block">Payment Method</Label>
-                        <div className="grid grid-cols-2 gap-3">
-                            {(['card', 'ach'] as const).map(m => {
-                                const isSelected = method === m;
-                                return (
-                                    <button
-                                        key={m}
-                                        type="button"
-                                        onClick={() => setMethod(m)}
-                                        className={`flex items-center gap-3 px-4 py-3 rounded-lg border text-sm transition-colors ${
-                                            isSelected
-                                                ? 'border-indigo-500 bg-indigo-500/10 text-indigo-300'
-                                                : 'border-zinc-700 bg-zinc-900 text-zinc-400 hover:border-zinc-500'
-                                        }`}
-                                    >
-                                        {m === 'card'
-                                            ? <CreditCard size={18} />
-                                            : <Building2 size={18} />}
-                                        <div className="text-left">
-                                            <p className="font-medium">
-                                                {m === 'card' ? 'Card' : 'ACH Direct Debit'}
-                                            </p>
-                                            <p className="text-xs text-zinc-500">
-                                                {m === 'card' ? '2.9% + $0.30' : '0.8%, max $5'}
-                                            </p>
-                                        </div>
-                                    </button>
-                                );
-                            })}
-                        </div>
+                {/* Method selector */}
+                <div>
+                    <Label className="text-zinc-300 mb-2 block">Payment Method</Label>
+                    <div className="grid grid-cols-3 gap-2">
+                        {methodOptions.map(m => {
+                            const isSelected = method === m.id;
+                            return (
+                                <button
+                                    key={m.id}
+                                    type="button"
+                                    onClick={() => setMethod(m.id)}
+                                    className={`flex flex-col items-start gap-1.5 px-3 py-3 rounded-lg border text-sm transition-colors ${
+                                        isSelected
+                                            ? 'border-indigo-500 bg-indigo-500/10 text-indigo-300'
+                                            : 'border-zinc-700 bg-zinc-900 text-zinc-400 hover:border-zinc-500'
+                                    }`}
+                                >
+                                    <span className={isSelected ? 'text-indigo-400' : 'text-zinc-500'}>{m.icon}</span>
+                                    <div>
+                                        <p className="font-medium text-xs leading-tight">{m.label}</p>
+                                        <p className="text-[11px] text-zinc-500 leading-tight">{m.sub}</p>
+                                    </div>
+                                </button>
+                            );
+                        })}
                     </div>
+                    {method === 'external' && (
+                        <p className="text-xs text-amber-400/80 mt-2 flex items-center gap-1">
+                            <Info size={12} />
+                            External payments are submitted as requests and require admin approval before being confirmed.
+                        </p>
+                    )}
+                </div>
 
-                    {/* Amount */}
-                    <div className="space-y-1.5">
-                        <Label htmlFor="amount" className="text-zinc-300">
-                            Amount (USD)
-                            {schedule && (
-                                <span className="ml-2 text-xs text-zinc-500 font-normal">
-                                    scheduled: {formatCurrency(schedule.monthlyAmount)}
+                {/* Amount field — always shown */}
+                <div className="space-y-1.5">
+                    <Label htmlFor="amount" className="text-zinc-300">
+                        Amount (USD)
+                        {schedule && (
+                            <span className="ml-2 text-xs text-zinc-500 font-normal">
+                                scheduled: {formatCurrency(schedule.monthlyAmount)}
+                            </span>
+                        )}
+                    </Label>
+                    <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 text-sm">$</span>
+                        <Input
+                            id="amount"
+                            type="number"
+                            min="1"
+                            step="0.01"
+                            value={amount}
+                            onChange={e => setAmount(e.target.value)}
+                            required
+                            className="pl-7 bg-zinc-900 border-zinc-700 text-white placeholder:text-zinc-600 focus:border-indigo-500"
+                            placeholder="0.00"
+                        />
+                    </div>
+                </div>
+
+                {/* Stripe fee breakdown — card / ach only */}
+                {method !== 'external' && parsedAmount > 0 && (
+                    <div className="rounded-lg bg-zinc-800/50 border border-zinc-700 p-4 space-y-2">
+                        <div className="flex items-center gap-1.5 mb-3">
+                            <Info size={13} className="text-zinc-500" />
+                            <span className="text-xs text-zinc-500 uppercase tracking-wide font-medium">Fee Breakdown</span>
+                        </div>
+                        <div className="flex justify-between text-sm">
+                            <span className="text-zinc-400">Payment amount</span>
+                            <span className="text-zinc-200">{formatCurrency(parsedAmount)}</span>
+                        </div>
+                        <div className="flex justify-between text-sm">
+                            <span className="text-zinc-400">
+                                Stripe fee{' '}
+                                <span className="text-zinc-600">
+                                    ({method === 'card' ? '2.9% + $0.30' : '0.8%, max $5'})
                                 </span>
-                            )}
-                        </Label>
-                        <div className="relative">
-                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 text-sm">$</span>
+                            </span>
+                            <span className="text-yellow-400">+{formatCurrency(feeCalc.fee)}</span>
+                        </div>
+                        <div className="border-t border-zinc-700 pt-2 flex justify-between text-sm font-semibold">
+                            <span className="text-zinc-200">Total charged to you</span>
+                            <span className="text-white">{formatCurrency(feeCalc.total)}</span>
+                        </div>
+                        {method === 'ach' && parsedAmount > 172 && (
+                            <p className="text-xs text-emerald-500 pt-1">
+                                ACH cap hit — you save {formatCurrency(cardTotalWithFee(parsedAmount).fee - 5)} vs card.
+                            </p>
+                        )}
+                    </div>
+                )}
+
+                {/* External-specific fields */}
+                {method === 'external' && (
+                    <form onSubmit={handleExternalSubmit} className="space-y-4">
+                        <div className="space-y-1.5">
+                            <Label className="text-zinc-300">Payment Service</Label>
+                            <select
+                                value={extMethod}
+                                onChange={e => setExtMethod(e.target.value)}
+                                className="flex h-9 w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-1 text-sm text-zinc-100 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                            >
+                                <option>Zelle</option>
+                                <option>Check</option>
+                                <option>Wire Transfer</option>
+                                <option>Cash</option>
+                                <option>Other</option>
+                            </select>
+                        </div>
+                        <div className="space-y-1.5">
+                            <Label htmlFor="extPaidDate" className="text-zinc-300">Date Paid</Label>
                             <Input
-                                id="amount"
-                                type="number"
-                                min="1"
-                                step="0.01"
-                                value={amount}
-                                onChange={e => setAmount(e.target.value)}
+                                id="extPaidDate"
+                                type="date"
+                                value={extPaidDate}
+                                onChange={e => setExtPaidDate(e.target.value)}
                                 required
-                                className="pl-7 bg-zinc-900 border-zinc-700 text-white placeholder:text-zinc-600 focus:border-indigo-500"
-                                placeholder="0.00"
+                                className="bg-zinc-900 border-zinc-700 text-zinc-100"
                             />
                         </div>
-                    </div>
-
-                    {/* Fee breakdown */}
-                    {parsedAmount > 0 && (
-                        <div className="rounded-lg bg-zinc-800/50 border border-zinc-700 p-4 space-y-2">
-                            <div className="flex items-center gap-1.5 mb-3">
-                                <Info size={13} className="text-zinc-500" />
-                                <span className="text-xs text-zinc-500 uppercase tracking-wide font-medium">Fee Breakdown</span>
-                            </div>
-                            <div className="flex justify-between text-sm">
-                                <span className="text-zinc-400">Payment amount</span>
-                                <span className="text-zinc-200">{formatCurrency(parsedAmount)}</span>
-                            </div>
-                            <div className="flex justify-between text-sm">
-                                <span className="text-zinc-400">
-                                    Stripe fee{' '}
-                                    <span className="text-zinc-600">
-                                        ({method === 'card' ? '2.9% + $0.30' : '0.8%, max $5'})
-                                    </span>
-                                </span>
-                                <span className="text-yellow-400">+{formatCurrency(feeCalc.fee)}</span>
-                            </div>
-                            <div className="border-t border-zinc-700 pt-2 flex justify-between text-sm font-semibold">
-                                <span className="text-zinc-200">Total charged to you</span>
-                                <span className="text-white">{formatCurrency(feeCalc.total)}</span>
-                            </div>
-                            {method === 'ach' && parsedAmount > 172 && (
-                                <p className="text-xs text-emerald-500 pt-1">
-                                    ACH cap hit — you save {formatCurrency(cardTotalWithFee(parsedAmount).fee - 5)} vs card.
-                                </p>
-                            )}
+                        <div className="space-y-1.5">
+                            <Label htmlFor="extNote" className="text-zinc-300">
+                                Note <span className="text-zinc-500 font-normal">(optional)</span>
+                            </Label>
+                            <Input
+                                id="extNote"
+                                type="text"
+                                value={extNote}
+                                onChange={e => setExtNote(e.target.value)}
+                                placeholder="Confirmation number, memo, etc."
+                                className="bg-zinc-900 border-zinc-700 text-zinc-100 placeholder:text-zinc-600"
+                            />
                         </div>
-                    )}
+                        {extResult === 'success' && (
+                            <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/20 px-4 py-3 text-sm text-emerald-300">
+                                Payment request submitted. Your admin will review and confirm it.
+                            </div>
+                        )}
+                        {extResult === 'error' && (
+                            <p className="text-sm text-red-400">Failed to submit request. Please try again.</p>
+                        )}
+                        <Button
+                            type="submit"
+                            className="w-full bg-indigo-600 hover:bg-indigo-500 text-white"
+                            disabled={extSubmitting || parsedAmount <= 0 || !schedule}
+                        >
+                            {extSubmitting ? 'Submitting...' : `Submit Request for ${parsedAmount > 0 ? formatCurrency(parsedAmount) : '—'}`}
+                        </Button>
+                    </form>
+                )}
 
-                    {intentError && <p className="text-sm text-red-400">{intentError}</p>}
-
-                    <Button
-                        type="submit"
-                        className="w-full bg-indigo-600 hover:bg-indigo-500 text-white"
-                        disabled={isCreatingIntent || parsedAmount <= 0 || !schedule}
-                    >
-                        {isCreatingIntent ? 'Preparing...' : 'Continue to payment'}
-                    </Button>
-                </form>
+                {/* Stripe flow — proceed button */}
+                {method !== 'external' && (
+                    <>
+                        {intentError && <p className="text-sm text-red-400">{intentError}</p>}
+                        <Button
+                            type="button"
+                            className="w-full bg-indigo-600 hover:bg-indigo-500 text-white"
+                            disabled={isCreatingIntent || parsedAmount <= 0 || !schedule}
+                            onClick={handleProceed}
+                        >
+                            {isCreatingIntent ? 'Preparing...' : 'Continue to payment'}
+                        </Button>
+                    </>
+                )}
             </div>
         );
     }
 
-    // ── Pay step — only rendered once we have a client secret ─────────────────
     return (
         <div className="max-w-lg mx-auto space-y-6">
             <div>
