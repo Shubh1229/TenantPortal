@@ -11,39 +11,35 @@ This project is intended as both a portfolio piece and a practical tool in activ
 ## 2. Tech Stack
 
 ### Frontend
-- **Framework:** Next.js (React)
-- **UI Library:** shadcn/ui
+- **Framework:** Next.js (App Router)
+- **UI Library:** shadcn/ui (dark zinc theme)
+- **Styling:** Tailwind CSS v4
+- **Payments:** Stripe.js + React Stripe Elements
 - **Hosting:** Azure Blob Storage + Azure CDN (static export)
-  - *Alternative:* Azure Static Web Apps — supports SSR if needed in future
 
 ### Backend
 - **Language/Runtime:** C# / .NET 9.0
 - **Architecture:** Microservices in Docker containers
-- **Internal Communication:** gRPC (Protobuf)
+- **Internal Communication:** HTTP proxy via YARP (API Gateway)
 - **External API:** HTTPS REST endpoints via API Gateway service
 - **Hosting:** Azure Container Apps
 
 ### Database
 - **Engine:** PostgreSQL
 - **Host:** Azure Database for PostgreSQL
+- **ORM:** Entity Framework Core (Npgsql provider)
 
 ### Infrastructure & Services
-- **Secret Management:** Azure Key Vault
+- **Secret Management:** Azure Key Vault (via `ISecretsProvider` abstraction; `LocalSecretsProvider` in dev)
 - **File Storage:** Azure Blob Storage (contracts/PDFs)
 - **Email:** Azure Communication Services
-- **DNS:** Azure DNS
-- **SSL:** Azure App Service Managed Certificates or Let's Encrypt
-- **Payments:** Stripe (with webhook support)
-- **Domain:** Custom domain (to be purchased separately)
-
-### Observability
-- **Structured Logging:** Serilog (all services)
-- **Log Aggregation:** Azure Application Insights
-- **Local Dev Logging:** Seq (optional, runs as Docker container)
+- **Payments:** Stripe (card, ACH, webhook support)
+- **Structured Logging:** Serilog → Azure Application Insights
 
 ### Authentication
-- **Method:** Custom JWT-based auth (access + refresh tokens)
-- **2FA:** TOTP via Microsoft Authenticator (or any TOTP-compatible app)
+- **Method:** Custom JWT-based auth (HS256 access tokens + opaque refresh tokens)
+- **2FA:** TOTP via any RFC 6238-compatible authenticator app
+- **Dev bypass:** `POST /api/auth/dev-login` skips TOTP for the three hardcoded test accounts
 
 ---
 
@@ -54,11 +50,11 @@ This project is intended as both a portfolio piece and a practical tool in activ
             |
           HTTPS
             |
-   [API Gateway Service]         ← Single public-facing .NET service
+   [API Gateway Service]         ← Single public-facing .NET service (YARP)
      |       |      |      |
-   gRPC    gRPC   gRPC   gRPC
+  (HTTP)  (HTTP)  (HTTP)  (HTTP)
      |       |      |      |
-[Auth]  [Transaction] [Contract] [Notification]
+[Auth]  [Transactions] [Contracts] [Notifications]
      \       |      /
       \      |     /
     [PostgreSQL — Azure DB]
@@ -72,48 +68,48 @@ This project is intended as both a portfolio piece and a practical tool in activ
 
 ### 4.1 API Gateway Service
 - Single HTTPS entry point for all frontend requests
-- Routes requests to internal services via gRPC
-- Handles SSL termination
-- Validates JWT on every incoming request before forwarding
-- Applies rate limiting on auth and payment endpoints
-- **Note:** Gateway JWT validation is the first layer only — each internal service also validates claims independently (defense in depth)
+- YARP reverse proxy routes to internal services
+- JWT validation on every inbound request before forwarding (first layer)
+- Assigns `X-Correlation-ID` UUID to every request
+- Stripe webhook (`/api/webhooks/stripe`) bypasses JWT — verified by Stripe signature
 
 ### 4.2 Auth Service
-- User login (email + password + TOTP)
-- JWT issuance and refresh token management
-- Invite-based account creation flow
-- Password hashing (bcrypt or Argon2)
-- TOTP secret generation and verification
-- Role-based access control enforcement
-- Health check endpoints: `/health`, `/health/ready`, `/health/live`
+- Two-step login: email + password → TOTP → JWT + refresh token
+- Invite-based account creation (48-hour invite tokens)
+- JWT issuance (HS256, 15-minute access tokens); refresh token rotation
+- TOTP (RFC 6238, OtpNet); TOTP secret encrypted at rest
+- Password hashing (BCrypt)
+- User profiles (separate table): first name, last name, phone, emergency contact
+- Multiple notification email addresses per user (separate table)
+- `IsProfileComplete` flag: new users are redirected to profile setup before accessing the dashboard
+- Public profile endpoint for admin views
+- Role-switching: SuperAdmin can issue a downgraded-role token for UI testing
 
 ### 4.3 Transaction Service
 - CRUD for all transaction records
-- Stripe payment intent creation and webhook handling
+- Stripe PaymentIntent creation and webhook handling
 - External payment request workflow (submit → pending → approve/decline)
-- Rent schedule management
-- Automatic overdue detection and status updates
-- Stripe webhook endpoint (exposed via API Gateway)
-- Independently validates JWT claims and tenant ownership on every request
-- Health check endpoints: `/health`, `/health/ready`, `/health/live`
+- Rent schedule management with two billing modes:
+  - **PerTenant:** each co-tenant has an independent schedule
+  - **SharedUnit:** one schedule covers the entire unit
+- Multiple tenants per unit simultaneously; tenant-in-one-unit constraint enforced
+- Nightly `OverduePaymentJob` marks unpaid past-due transactions as Overdue
+- Full property and unit CRUD with soft-delete guard rails
 
 ### 4.4 Contract Service
 - PDF upload and storage to Azure Blob Storage
-- Contract metadata management (tenant association, upload date, active/archived)
-- Secure download URL generation (SAS tokens, short-lived)
-- File validation: PDF only, MIME type checked, max file size enforced
-- Independently validates JWT claims and admin/tenant scope on every request
-- Designed to accommodate DocuSign integration as a future add-on
-- Health check endpoints: `/health`, `/health/ready`, `/health/live`
+- Two pre-signed SAS URL types per contract:
+  - **DownloadUrl** — standard read URL
+  - **PreviewUrl** — read URL with `ContentDisposition: inline` for in-browser rendering
+- New upload archives all prior contracts for the same tenant/unit
+- Soft-delete only; all contracts retained indefinitely
+- Admin can delete contracts via the admin UI
 
 ### 4.5 Notification Service
 - Email dispatch via Azure Communication Services
-- In-app notification creation and storage
-- Reminder schedule management (per-user configurable)
-- Overdue email cycle management
-- User email notification preference management (on/off per user)
-- Independently validates JWT claims and recipient ownership on every request
-- Health check endpoints: `/health`, `/health/ready`, `/health/live`
+- In-app notification creation and storage (always on, cannot be disabled)
+- Configurable rent reminders (multiple per user, custom days-before + send time)
+- Per-user email opt-in/out
 
 ---
 
@@ -127,64 +123,61 @@ Super Admin
             └── Tenant (created by Admin or Super Admin)
 ```
 
+There is also a **Tester** role used for QA that has the same permissions as Admin but is flagged distinctly in the UI.
+
 ### 5.2 Role Permissions
 
-| Action                          | Super Admin | Admin     | Tenant      |
-|---------------------------------|-------------|-----------|-------------|
-| Create Admin accounts           | ✅          | ❌        | ❌          |
-| Create Tenant accounts          | ✅          | ✅        | ❌          |
-| View all tenants                | ✅          | ✅        | ❌          |
-| View own transactions           | ✅          | ✅        | ✅ (own)    |
-| Manage rent schedule            | ✅          | ✅        | ❌          |
-| Upload contracts                | ✅          | ✅        | ❌          |
-| View all contracts              | ✅          | ✅        | ✅ (own)    |
-| Approve/decline payment requests| ✅          | ✅        | ❌          |
-| Toggle own email notifications  | ❌          | ✅        | ✅          |
-| Receive any notifications       | ❌          | ✅        | ✅          |
+| Action                             | Super Admin | Admin       | Tenant       |
+|------------------------------------|-------------|-------------|--------------|
+| Create Admin accounts              | ✅          | ❌          | ❌           |
+| Create Tenant accounts             | ✅          | ✅          | ❌           |
+| View all tenants                   | ✅          | ✅          | ❌           |
+| View tenant public profile         | ✅          | ✅          | ❌           |
+| View own transactions              | ✅          | ✅          | ✅ (own)     |
+| Manage rent schedules              | ✅          | ✅          | ❌           |
+| Upload/delete contracts            | ✅          | ✅          | ❌           |
+| View contracts                     | ✅          | ✅          | ✅ (own)     |
+| Approve/decline payment requests   | ✅          | ✅          | ❌           |
+| Submit external payment request    | ❌          | ❌          | ✅           |
+| Make Stripe payment                | ❌          | ❌          | ✅           |
+| Manage own profile                 | ✅          | ✅          | ✅           |
+| Toggle own email notifications     | ❌          | ✅          | ✅           |
+| Receive notifications              | ❌          | ✅          | ✅           |
+| Manage properties and units        | ✅          | ✅          | ❌           |
+| Switch role (for testing)          | ✅          | ❌          | ❌           |
 
 ### 5.3 Super Admin Account
-- Hardcoded and database-seeded on first deployment
-- Credentials stored securely in Azure Key Vault
+- Seeded at first deployment; credentials stored in Azure Key Vault
 - Not created via the invite flow
-- Does not receive any notifications
-- Has no notification settings
+- Does not receive any notifications; has no notification settings
+- Can switch into any lower role to test the UI without creating separate test accounts
 
-### 5.4 Account Creation Flow (Admin and Tenant)
-1. Authorized user fills out a form in the portal (invitee name + email + role)
-2. System creates a **pending** account record
-3. Invite email is sent with a **time-limited signup link** (recommend 48-hour expiry)
-4. Invitee clicks link → sets their own password → scans TOTP QR code to enroll in 2FA
-5. Account becomes active
+### 5.4 Account Creation Flow
+1. Admin fills out an invite form (email + role)
+2. Pending account record created; invite email sent with a 48-hour signup link
+3. Invitee clicks link → sets password → scans TOTP QR code
+4. Account becomes active (`IsActive = true`)
+5. On first login, user is redirected to `/profile-setup` to enter name and phone before accessing the dashboard
 
 ### 5.5 Login Flow
-1. User submits email + password
-2. Server validates credentials
-3. Server prompts for TOTP code
-4. User submits 6-digit code from authenticator app
-5. Server issues JWT access token + refresh token on success
+1. Submit email + password → receive opaque temp token
+2. Submit TOTP code + temp token → receive JWT access token (15 min) + refresh token (7 days)
+3. Access token sent as `Authorization: Bearer` header on every API call
+4. On 401, client silently retries once via `POST /api/auth/refresh`
+5. Refresh failure → redirect to login
 
-### 5.6 JWT Strategy
-- Short-lived access tokens (e.g. 15 minutes)
-- Longer-lived refresh tokens (e.g. 7 days), stored securely (httpOnly cookie recommended)
-- Refresh token rotation on each use
-- Tokens invalidated on logout
+### 5.6 Profile Completion Gate
+- `IsProfileComplete` is set to `false` on account creation
+- Set to `true` when the user submits the profile form (first + last name, phone required; emergency contact optional)
+- The dashboard layout checks this on every load and redirects to `/profile-setup` if false
+- Fake dev accounts have profiles seeded on startup so they bypass this gate
 
 ---
 
 ## 6. Transactions
 
 ### 6.1 Transaction Types
-Comprehensive set including but not limited to:
-- Monthly rent
-- Security deposit
-- Late fees
-- Maintenance charges
-- Utility charges
-- Parking fees
-- Pet fees
-- Refunds / credits
-
-Transaction types should be stored as an enum or configurable list to allow future expansion.
+- Monthly rent, security deposit, late fees, maintenance, utility, parking, pet fees, refunds/credits, other
 
 ### 6.2 Transaction States
 
@@ -195,80 +188,108 @@ Transaction types should be stored as an enum or configurable list to allow futu
 | `Declined` | Admin rejected an external payment request                   |
 | `Overdue`  | Past due date with no Confirmed or Pending payment           |
 
-### 6.3 Payment Flow A — In-App via Stripe
+### 6.3 Payment Methods
 
-1. Tenant initiates payment in portal
-2. Frontend calls API Gateway → Transaction Service creates Stripe Payment Intent
-3. Tenant completes card payment via Stripe hosted UI or Elements
-4. Stripe fires webhook to Transaction Service on success
-5. Transaction auto-logged as `Confirmed`
-6. Email + in-app notification sent to Admin and Tenant
+There are three distinct payment paths:
 
-### 6.4 Payment Flow B — External Payment (Zelle, check, bank transfer, etc.)
+**A — Stripe Card**
+1. Tenant selects Card on the payment page; Stripe Elements collects card details
+2. Frontend calls Transaction Service to create a PaymentIntent
+3. Stripe processes the charge directly; on success, webhook auto-confirms the transaction
+4. No admin approval needed; payment either succeeds or fails immediately
 
-1. Tenant submits "I paid externally" request (fields: amount, payment date, method, optional note)
+**B — Stripe ACH Direct Debit**
+1. Tenant selects ACH on the payment page; Stripe Elements collects bank account + routing number
+2. Same PaymentIntent flow as card; Stripe handles the debit
+3. No admin approval needed
+
+**C — External (Zelle, check, bank transfer, etc.)**
+1. Tenant submits a payment request (amount, payment date, method note)
 2. Transaction created with status `Pending`
-3. Admin receives email + in-app notification to verify
-4. Admin approves → status becomes `Confirmed`, Tenant notified
-5. Admin declines → status becomes `Declined`, Tenant notified, overdue cycle resumes if applicable
+3. Admin receives notification to verify and approve/decline
+4. Approve → `Confirmed`, tenant notified; Decline → `Declined`, overdue cycle resumes
 
-### 6.5 Rent Schedule
-- Admin or Super Admin creates the rent schedule per tenant (amount + initial due date)
-- System automatically calculates the next due date as the same day the following month
-- February edge case: if due date is 29, 30, or 31, clamp to last day of February (28 or 29)
-- Overdue detection runs daily (scheduled job) to flag unpaid past-due transactions
+Stripe processing fees are shown transparently to the tenant before confirming:
+- Card: 2.9% + $0.30
+- ACH: 0.8%, capped at $5.00
+
+### 6.4 Rent Schedules
+
+Two billing modes can be set per unit at creation time:
+
+- **PerTenant** — each co-tenant in the unit has their own independent rent schedule. Required for roommates paying separately.
+- **SharedUnit** — one schedule covers the entire unit. Used when one party pays full rent or tenants split informally outside the system.
+
+Admins create schedules on the Rent Schedule page. For PerTenant units, a specific tenant must be selected. For SharedUnit units, the schedule belongs to the unit (no tenant specified).
+
+When a tenant calls `GET /api/rent-schedule/my`, the system checks for a per-tenant schedule first, then falls back to the unit's shared schedule.
+
+### 6.5 Overdue Detection
+- Nightly background job runs at midnight
+- Marks transactions whose `due_date` has passed with no Confirmed or Pending payment as `Overdue`
 
 ### 6.6 Historical Data
-- Admins and Super Admin can backfill historical transactions manually
-- Initial tenant history for current tenant to be seeded directly into the database
-
-### 6.7 Tenant View
-- Tenant can view their full transaction history
+- Admins can backfill historical transactions manually
 - Transactions sorted by date descending by default
 
 ---
 
-## 7. Contracts
+## 7. Properties & Units
 
-### 7.1 Storage
-- Admins upload finalized, pre-signed PDF lease agreements
-- PDFs stored in Azure Blob Storage
-- Metadata stored in PostgreSQL (tenant ID, upload date, uploader, active flag)
+### 7.1 Property Management
+- Admins create and manage properties (name + address)
+- Properties can be edited or soft-deleted
+- A property cannot be deleted while it has active (non-deleted) units
 
-### 7.2 Contract History
-- All past and current contracts are retained indefinitely
-- No contracts are deleted — only archived when superseded by a new upload
+### 7.2 Unit Management
+- Units belong to a property; unit numbers must be unique within a property
+- Fields: unit number, bedrooms, bathrooms, square feet, billing mode
+- Units can be edited or soft-deleted
+- A unit cannot be deleted while it has active tenant assignments
+- Multiple tenants can be simultaneously assigned to one unit (co-tenancy)
+- A single tenant cannot be assigned to more than one unit at a time
 
-### 7.3 Access Control
-
-| Role        | Access                                      |
-|-------------|---------------------------------------------|
-| Super Admin | View and download all contracts, all tenants|
-| Admin       | View and download all contracts, all tenants|
-| Tenant      | View and download own contracts only (current + previous) |
-
-### 7.4 Download & Viewing
-- Tenants and Admins can view PDFs in-browser
-- Download to device also supported
-- Secure time-limited URLs generated via Azure Blob Storage (SAS tokens)
-
-### 7.5 No Status Workflow (for now)
-- Uploaded contract is considered finalized immediately
-- No draft/sent/signed states at this stage
-
-### 7.6 Future: DocuSign Integration
-- Contract Service should be architected to support an e-signature flow in the future
-- Recommended: Abstract contract finalization behind an interface so DocuSign can be plugged in without restructuring the service
+### 7.3 Admin Detail Views
+- Clicking a unit opens a detail panel: unit specs, all current tenants with full public profiles (name, phone, emergency contact), and the unit's rent schedule
+- Clicking a tenant from within a unit or the tenant list opens a tenant detail panel: profile info + all units they're currently assigned to
+- Everything cross-links; admins can navigate from property → unit → tenant and back
 
 ---
 
-## 8. Notifications
+## 8. Contracts
 
-### 8.1 Channels
-- **Email** — via Azure Communication Services; toggleable per user (on/off for themselves only)
-- **In-App** — notification bell/inbox in the portal; always on, cannot be disabled
+### 8.1 Storage
+- Admins upload finalized PDF lease agreements
+- PDFs stored in Azure Blob Storage; metadata in PostgreSQL
+- Blob path: `contracts/{tenantId}/{unitId}/{contractId}`
 
-### 8.2 Notification Events
+### 8.2 Contract History
+- All past and current contracts retained indefinitely (soft-delete only)
+- New upload archives prior contracts for the same tenant/unit (`IsCurrent = false`)
+- Admin can delete a contract (soft-delete removes it from all views)
+
+### 8.3 Access Control
+
+| Role        | Access                                               |
+|-------------|------------------------------------------------------|
+| Super Admin | View, preview, download, delete all contracts        |
+| Admin       | View, preview, download, delete own uploaded contracts |
+| Tenant      | View, preview, download own contracts (current + archived) |
+
+### 8.4 Viewing
+- **In-browser preview:** iframe rendered using a SAS URL with `ContentDisposition: inline`
+- **Download:** SAS URL without content-disposition header (browser prompts download)
+- Listing URLs have a 1-hour expiry; on-demand download URLs have a 15-minute expiry
+
+---
+
+## 9. Notifications
+
+### 9.1 Channels
+- **Email** — Azure Communication Services; toggleable per user
+- **In-App** — notification bell/inbox; always on, cannot be disabled
+
+### 9.2 Notification Events
 
 | Event                              | Notifies              |
 |------------------------------------|-----------------------|
@@ -276,18 +297,18 @@ Transaction types should be stored as an enum or configurable list to allow futu
 | External payment request submitted | Admin                 |
 | External request approved          | Tenant                |
 | External request declined          | Tenant                |
-| Rent reminder (configurable)       | Tenant (+ optionally Admin) |
+| Rent reminder (configurable)       | Tenant                |
 | Payment overdue — day after        | Tenant                |
 | Payment overdue — weekly repeat    | Tenant                |
 | Account invite sent                | Invitee               |
+| Contract uploaded                  | Tenant                |
 
-### 8.3 Rent Reminders
+### 9.3 Rent Reminders
 - Default: 1 reminder, 7 days before due date
-- Admin or Tenant can each independently add multiple reminders
-- Each reminder is configurable: days in advance + specific send time
-- Each user only manages their own reminder preferences
+- Admin or Tenant can independently add multiple reminders
+- Each reminder: days in advance + specific send time
 
-### 8.4 Overdue Email Logic
+### 9.4 Overdue Email Logic
 
 ```
 Due date passes
@@ -304,413 +325,313 @@ No Confirmed or Pending payment?
    → Continue until a Confirmed payment exists
 ```
 
-### 8.5 User Notification Controls
-- Each user can toggle email notifications on or off for themselves only
-- In-app notifications cannot be toggled — always delivered
-- Super Admin has no notification settings and receives no notifications
-- Admins cannot toggle notifications for other users
-- Tenants cannot toggle notifications for other users
+### 9.5 Notification Email Addresses
+- Each user can register multiple notification email addresses (separate from primary login email)
+- Managed on the profile page: add or remove individual addresses
+- At least one notification email is required at all times
 
 ---
 
-## 9. Dashboard Views
+## 10. Dashboard Views
 
-### 9.1 Tenant Dashboard
+### 10.1 Tenant Dashboard
 - Current balance / next rent amount due
 - Next rent due date + days remaining
-- Recent transaction history (last 5–10 entries)
+- Recent transaction history
 - Pending external payment requests (with status)
 - Unread in-app notifications
 
-### 9.2 Admin Dashboard
+### 10.2 Admin Dashboard
 - List of all tenants with current payment status (Paid / Pending / Overdue)
 - Pending external payment requests awaiting approval
 - Upcoming rent due dates across all tenants
-- Recent activity feed (payments, contract uploads, new tenants)
+- Recent activity feed
 
-### 9.3 Super Admin Dashboard
+### 10.3 Super Admin Dashboard
 - System-wide overview: total admins, total tenants, total active leases
 - Full list of all admins and their tenants
-- Pending account invites (admin and tenant)
-- Recent activity across the entire system
+- Pending account invites
 
 ---
 
-## 10. Database Schema (High-Level)
+## 11. Database Schema (High-Level)
 
-### Users
-```
-users
-  id (UUID, PK)
-  email (string, unique)
-  password_hash (string)
-  totp_secret (string, encrypted)
-  role (enum: super_admin, admin, tenant)
-  is_active (bool)
-  is_deleted (bool, default false)
-  deleted_at (timestamp, nullable)
-  created_at (timestamp)
-  updated_at (timestamp)
-  invited_by (UUID, FK → users)
-```
+### Auth DB
 
-### Properties
+**users**
 ```
-properties
-  id (UUID, PK)
-  name (string)
-  address (string)
-  is_active (bool, default true)
-  is_deleted (bool, default false)
-  deleted_at (timestamp, nullable)
-  created_at (timestamp)
-  updated_at (timestamp)
+id (UUID, PK)
+email (varchar, unique)
+password_hash (varchar)
+totp_secret (varchar, encrypted)
+role (enum: super_admin, admin, tenant, tester)
+is_profile_complete (bool, default false)
+is_active (bool)
+is_deleted (bool)
+deleted_at (timestamp, nullable)
+refresh_token_hash (varchar, nullable)
+refresh_token_expires_at (timestamp, nullable)
+invited_by (UUID, FK → users, nullable)
+created_at / updated_at (timestamp)
 ```
 
-### Units
+**user_profiles**
 ```
-units
-  id (UUID, PK)
-  property_id (UUID, FK → properties)
-  unit_number (string)
-  bedrooms (int, nullable)
-  bathrooms (decimal, nullable)
-  square_feet (int, nullable)
-  is_active (bool, default true)
-  is_deleted (bool, default false)
-  deleted_at (timestamp, nullable)
-  created_at (timestamp)
-  updated_at (timestamp)
+id (UUID, PK)
+user_id (UUID, unique FK → users)
+first_name (text)
+last_name (text)
+phone_number (text)
+emergency_contact_name (text, nullable)
+emergency_contact_phone (text, nullable)
+created_at / updated_at (timestamp)
 ```
 
-### Tenant Unit Assignments
+**user_notification_emails**
 ```
-tenant_unit_assignments
-  id (UUID, PK)
-  tenant_id (UUID, FK → users)
-  unit_id (UUID, FK → units)
-  start_date (date)
-  end_date (date, nullable)    ← null means currently active
-  created_at (timestamp)
-  updated_at (timestamp)
+id (UUID, PK)
+user_id (UUID, FK → users)
+email (varchar, 256)
+created_at (timestamp)
+UNIQUE INDEX (user_id, email)
 ```
 
-### Invite Tokens
+**invite_tokens**
 ```
-invite_tokens
-  id (UUID, PK)
-  email (string)
-  role (enum)
-  token_hash (string)
-  expires_at (timestamp)
-  used (bool)
-  created_by (UUID, FK → users)
-  created_at (timestamp)
+id (UUID, PK)
+email (varchar)
+role (enum)
+token_hash (varchar, unique)
+expires_at (timestamp)
+used (bool)
+created_by (UUID, FK → users)
+created_at (timestamp)
 ```
 
-### Rent Schedules
+### Transaction DB
+
+**properties**
 ```
-rent_schedules
-  id (UUID, PK)
-  tenant_id (UUID, FK → users)
-  unit_id (UUID, FK → units)
-  monthly_amount (decimal)
-  due_day (int, 1–31)
-  start_date (date)
-  created_by (UUID, FK → users)
-  created_at (timestamp)
-  updated_at (timestamp)
+id (UUID, PK)
+name (text)
+address (text)
+is_active (bool, default true)
+is_deleted (bool, default false)
+deleted_at (timestamp, nullable)
+created_by (UUID)
+created_at / updated_at (timestamp)
+```
+
+**units**
+```
+id (UUID, PK)
+property_id (UUID, FK → properties)
+unit_number (varchar)
+bedrooms (int, nullable)
+bathrooms (decimal, nullable)
+square_feet (int, nullable)
+billing_mode (enum: per_tenant=0, shared_unit=1)
+is_active (bool, default true)
+is_deleted (bool, default false)
+deleted_at (timestamp, nullable)
+created_at / updated_at (timestamp)
+PARTIAL UNIQUE INDEX (property_id, unit_number) WHERE is_deleted = false
+```
+
+**tenant_unit_assignments**
+```
+id (UUID, PK)
+tenant_id (UUID)
+unit_id (UUID, FK → units)
+start_date (timestamp UTC)
+end_date (timestamp UTC, nullable)   ← null = currently active
+created_at / updated_at (timestamp)
+```
+
+**rent_schedules**
+```
+id (UUID, PK)
+tenant_id (UUID, nullable)           ← null for SharedUnit; set for PerTenant
+unit_id (UUID, FK → units)
+monthly_amount (decimal)
+due_day_of_month (int, 1–28)
+start_date (timestamp UTC)
+created_by (UUID)
+created_at / updated_at (timestamp)
+```
+
+**transactions**
+```
+id (UUID, PK)
+tenant_id (UUID)
+unit_id (UUID)
+type (enum: rent, deposit, late_fee, maintenance, utility, parking, pet, refund, other)
+amount (decimal)
+status (enum: pending, confirmed, declined, overdue)
+payment_method (enum: stripe, ach, external, manual)
+external_method_note (text, nullable)
+stripe_payment_intent_id (varchar, nullable)
+due_date (timestamp, nullable)
+paid_date (timestamp, nullable)
+is_deleted (bool, default false)
+deleted_at (timestamp, nullable)
+created_by (UUID)
+created_at / updated_at (timestamp)
+```
+
+### Contract DB
+
+**contracts**
+```
+id (UUID, PK)
+tenant_id (UUID)
+unit_id (UUID)
+blob_storage_path (text, unique)
+file_name (text)
+is_current (bool)
+is_deleted (bool, default false)
+deleted_at (timestamp, nullable)
+uploaded_by (UUID)
+uploaded_at / updated_at (timestamp)
+```
+
+### Notification DB
+
+**notifications**
+```
+id, user_id, type (enum), message, is_read, created_at
+```
+
+**notification_preferences**
+```
+id, user_id (unique), email_enabled (bool), updated_at
+```
+
+**reminder_settings**
+```
+id, user_id, days_before, send_time, is_active, created_at, updated_at
+```
+
+---
+
+## 12. API Design (Current State)
+
+### Auth & Account
+```
+POST /api/auth/login                          — email + password → temp token
+POST /api/auth/login/totp                     — TOTP → access + refresh tokens
+POST /api/auth/register                       — complete invite registration
+POST /api/auth/refresh                        — rotate refresh token
+POST /api/auth/logout                         — revoke refresh token
+POST /api/auth/invite                         — send account invite (admin+)
+POST /api/auth/dev-login                      — TOTP-skipping login (dev only)
+POST /api/auth/switch-role                    — SuperAdmin role-switch token
+GET  /api/auth/users                          — list users (admin-scoped)
+GET  /api/auth/users/{id}/public-profile      — public profile (admin+)
+GET  /api/auth/account/profile                — own full profile
+PUT  /api/auth/account/profile                — update own profile
+POST /api/auth/account/notification-emails    — add notification email
+DELETE /api/auth/account/notification-emails/{id} — remove notification email
+PUT  /api/auth/account/primary-email          — change login email
+PUT  /api/auth/account/password               — change password
+DELETE /api/auth/account                      — delete own account
+```
+
+### Properties & Units
+```
+GET    /api/properties                        — list (admin-scoped)
+POST   /api/properties                        — create
+PUT    /api/properties/{id}                   — update name/address
+DELETE /api/properties/{id}                   — soft-delete (blocked if active units)
+GET    /api/units                             — list with currentTenantIds
+POST   /api/units                             — create (with billingMode)
+PUT    /api/units/{id}                        — update details/billing mode
+DELETE /api/units/{id}                        — soft-delete (blocked if active tenants)
+POST   /api/units/{id}/assign-tenant          — assign tenant
+DELETE /api/units/{id}/remove-tenant/{tid}    — end tenant assignment
+GET    /api/units/{id}/rent-schedule          — shared-unit schedule (TenantId=null)
 ```
 
 ### Transactions
 ```
-transactions
-  id (UUID, PK)
-  tenant_id (UUID, FK → users)
-  unit_id (UUID, FK → units)
-  type (enum: rent, deposit, late_fee, maintenance, utility, parking, pet, refund, other)
-  amount (decimal)
-  status (enum: pending, confirmed, declined, overdue)
-  payment_method (enum: stripe, external, manual)
-  external_method_note (string, nullable)
-  stripe_payment_intent_id (string, nullable)
-  due_date (date, nullable)
-  paid_date (date, nullable)
-  is_deleted (bool, default false)
-  deleted_at (timestamp, nullable)
-  created_by (UUID, FK → users)
-  created_at (timestamp)
-  updated_at (timestamp)
+GET    /api/transactions                      — list (role-scoped)
+GET    /api/transactions/{id}                 — get by ID
+POST   /api/transactions                      — create manual/backfill (admin+)
+POST   /api/transactions/external             — submit external payment request
+POST   /api/transactions/payment-intent       — create Stripe PaymentIntent
+PATCH  /api/transactions/{id}/approve         — approve external request
+PATCH  /api/transactions/{id}/decline         — decline external request
+DELETE /api/transactions/{id}                 — soft-delete
+POST   /api/webhooks/stripe                   — Stripe webhook (no JWT)
+```
+
+### Rent Schedules
+```
+GET    /api/rent-schedule/my                  — own schedule (per-tenant first, then shared)
+GET    /api/rent-schedule/{tenantId}          — by tenant (own only for Tenant role)
+GET    /api/rent-schedules                    — all (admin-scoped)
+POST   /api/rent-schedule                     — create
+PATCH  /api/rent-schedule/{id}                — update amount/due day
+DELETE /api/rent-schedule/{id}                — delete
 ```
 
 ### Contracts
 ```
-contracts
-  id (UUID, PK)
-  tenant_id (UUID, FK → users)
-  unit_id (UUID, FK → units)
-  blob_storage_path (string)
-  file_name (string)
-  is_current (bool)
-  is_deleted (bool, default false)
-  deleted_at (timestamp, nullable)
-  uploaded_by (UUID, FK → users)
-  uploaded_at (timestamp)
-  updated_at (timestamp)
+GET    /api/contracts                         — list (role-scoped); includes PreviewUrl
+GET    /api/contracts/{id}                    — single contract
+GET    /api/contracts/{id}/download           — fresh 15-min SAS download URL
+POST   /api/contracts/upload                  — upload PDF (admin+)
+DELETE /api/contracts/{id}                    — soft-delete (admin+)
 ```
 
 ### Notifications
 ```
-notifications
-  id (UUID, PK)
-  user_id (UUID, FK → users)
-  type (enum)
-  message (string)
-  is_read (bool)
-  created_at (timestamp)
-```
-
-### Reminder Settings
-```
-reminder_settings
-  id (UUID, PK)
-  user_id (UUID, FK → users)
-  days_before (int)
-  send_time (time)
-  is_active (bool)
-  created_at (timestamp)
-  updated_at (timestamp)
-```
-
-### Notification Preferences
-```
-notification_preferences
-  id (UUID, PK)
-  user_id (UUID, FK → users)
-  email_enabled (bool, default true)
-  updated_at (timestamp)
-```
-
-### Audit Logs
-```
-audit_logs
-  id (UUID, PK)
-  actor_user_id (UUID, FK → users)
-  action (string)               ← e.g. "contract.uploaded", "payment.approved"
-  target_entity (string)        ← e.g. "contracts", "transactions"
-  target_id (UUID, nullable)
-  metadata (jsonb, nullable)    ← optional extra context
-  created_at (timestamp)
-```
-
-### Recommended Indexes
-```sql
--- Transactions
-CREATE INDEX idx_transactions_tenant_id ON transactions(tenant_id);
-CREATE INDEX idx_transactions_status ON transactions(status);
-CREATE INDEX idx_transactions_due_date ON transactions(due_date);
-
--- Contracts
-CREATE INDEX idx_contracts_tenant_id ON contracts(tenant_id);
-
--- Notifications
-CREATE INDEX idx_notifications_user_id ON notifications(user_id);
-CREATE INDEX idx_notifications_is_read ON notifications(user_id, is_read);
-
--- Tenant Unit Assignments
-CREATE INDEX idx_tenant_unit_assignments_tenant_id ON tenant_unit_assignments(tenant_id);
-CREATE INDEX idx_tenant_unit_assignments_unit_id ON tenant_unit_assignments(unit_id);
-
--- Audit Logs
-CREATE INDEX idx_audit_logs_actor ON audit_logs(actor_user_id);
-CREATE INDEX idx_audit_logs_target ON audit_logs(target_entity, target_id);
+GET    /api/notifications
+PATCH  /api/notifications/{id}/read
+GET    /api/notification-preferences
+PATCH  /api/notification-preferences
+GET    /api/reminders
+POST   /api/reminders
+PATCH  /api/reminders/{id}
+DELETE /api/reminders/{id}
 ```
 
 ---
 
-## 11. API Design (High-Level)
+## 13. Deployment & Infrastructure
 
-All public endpoints are HTTPS REST via the API Gateway. All internal service communication is gRPC.
-
-### Property & Unit Endpoints
-```
-GET  /api/properties                  — list all properties (admin+)
-POST /api/properties                  — create property (super admin)
-GET  /api/properties/:id/units        — list units for a property (admin+)
-POST /api/properties/:id/units        — add unit to property (admin+)
-GET  /api/units/:id/assignments       — get tenant assignment history (admin+)
-POST /api/units/:id/assignments       — assign tenant to unit (admin+)
-PATCH /api/units/:id/assignments/:aid — update assignment end date (admin+)
-```
-
-### Auth Endpoints
-```
-POST /api/auth/login              — email + password + TOTP
-POST /api/auth/refresh            — refresh access token
-POST /api/auth/logout             — invalidate tokens
-POST /api/auth/invite             — send account invite (Super Admin / Admin)
-POST /api/auth/register           — complete invite registration (set password + enroll TOTP)
-```
-
-### User Endpoints
-```
-GET  /api/users                   — list users (role-filtered)
-GET  /api/users/:id               — get user detail
-PATCH /api/users/:id              — update user info
-```
-
-### Transaction Endpoints
-```
-GET  /api/transactions            — list transactions (role-filtered)
-GET  /api/transactions/:id        — get transaction detail
-POST /api/transactions            — create manual/backfill transaction (admin+)
-POST /api/transactions/payment-intent — create Stripe payment intent (tenant)
-POST /api/transactions/external   — submit external payment request (tenant)
-PATCH /api/transactions/:id/approve — approve external request (admin+)
-PATCH /api/transactions/:id/decline — decline external request (admin+)
-POST /api/webhooks/stripe         — Stripe webhook receiver
-```
-
-### Rent Schedule Endpoints
-```
-GET  /api/rent-schedule/:tenantId — get tenant's rent schedule
-POST /api/rent-schedule           — create rent schedule (admin+)
-PATCH /api/rent-schedule/:id      — update rent schedule (admin+)
-```
-
-### Contract Endpoints
-```
-GET  /api/contracts               — list contracts (role-filtered)
-GET  /api/contracts/:id/download  — get secure download URL
-POST /api/contracts/upload        — upload contract PDF (admin+)
-```
-
-### Notification Endpoints
-```
-GET  /api/notifications           — get in-app notifications for current user
-PATCH /api/notifications/:id/read — mark notification as read
-GET  /api/notification-preferences — get current user's email preferences
-PATCH /api/notification-preferences — update email preferences
-GET  /api/reminders               — get current user's reminder settings
-POST /api/reminders               — add reminder
-PATCH /api/reminders/:id          — update reminder
-DELETE /api/reminders/:id         — delete reminder
-```
+- **Backend:** Azure Container Apps, one container per service
+- **Frontend:** Azure Blob Storage static website + Azure CDN + custom domain
+- **Database:** Azure Database for PostgreSQL (Flexible Server)
+- **Secrets:** Azure Key Vault (managed identity, no hardcoded credentials)
+- **CI/CD:** GitHub Actions — build, test, push Docker images to Azure Container Registry, deploy to Container Apps on merge to main
 
 ---
 
-## 12. Deployment & Infrastructure
+## 14. Future Add-ons (Out of Scope for v1)
 
-### Environment Separation
-Three environments should be maintained:
-- **Development** — local Docker Compose, local PostgreSQL, test Stripe keys
-- **Staging** — full Azure deployment, mirrors production, used for testing before release
-- **Production** — live environment, real Stripe keys, real tenant data
-
-Each environment has its own Azure Key Vault, database instance, and Blob Storage account. Secrets never cross environments.
-
-### Container Strategy
-Each microservice is a separate Docker container:
-- `gateway-service`
-- `auth-service`
-- `transaction-service`
-- `contract-service`
-- `notification-service`
-
-All containers deployed to **Azure Container Apps**.
-
-### Environment & Secrets
-- All secrets (DB connection strings, JWT signing keys, Stripe keys, Azure Communication Services keys) stored in **Azure Key Vault**
-- Containers access Key Vault via managed identity (no hardcoded credentials)
-
-### Frontend Deployment
-- Next.js static export
-- Hosted on **Azure Blob Storage** with static website hosting enabled
-- Served via **Azure CDN**
-- Custom domain configured via **Azure DNS**
-- SSL via Azure CDN managed certificate
-
-### Database
-- **Azure Database for PostgreSQL** (Flexible Server recommended)
-- Migrations managed via Entity Framework Core
-
-### CI/CD (Recommended)
-- GitHub Actions or Azure DevOps pipelines
-- Build, test, and push Docker images to Azure Container Registry on merge to main
-- Auto-deploy to Azure Container Apps
-
----
-
-## 13. Future Add-ons (Out of Scope for v1)
-
-- **DocuSign integration** — e-signature flow for lease signing (Contract Service designed to accommodate)
-- **Maintenance request system** — tenant submits maintenance requests, admin manages status
-- **Property-scoped admin permissions** — `property_admins` join table so admins only manage assigned properties (foundation already in schema via Properties/Units)
-- **Admin monthly digest** — optional email summary of all transactions
+- **Payment failure notifications** — admin alert when Stripe card/ACH fails (`payment_intent.payment_failed` webhook)
+- **Transaction detail views** — full history filterable by tenant or unit; visible from unit/tenant detail panels
+- **DocuSign integration** — e-signature flow (Contract Service designed to accommodate via interface)
+- **Maintenance request system** — tenant-submitted requests, admin status management
+- **Property-scoped admin permissions** — admins restricted to assigned properties
+- **Admin monthly digest** — email summary of all transactions
 - **Tenant communication thread** — in-app messaging between admin and tenant
-- **Queue-based notification processing** — replace background `IHostedService` with Azure Service Bus for retry support, fault isolation, and independent scaling
+- **Queue-based notification processing** — Azure Service Bus for retry and fault isolation
 - **Payment analytics dashboard** — occupancy rates, monthly revenue, delinquency trends
 
 ---
 
-## 14. Development Notes
+## 15. Development Notes
 
-- **Seed script** should create the Super Admin account on first run, reading credentials from Azure Key Vault or environment variables
-- **Stripe webhook** must bypass JWT auth and instead be verified using Stripe's webhook signing secret (`Stripe-Signature` header) before processing — JWT validation will fail on Stripe's server-originated requests
-- **Overdue job** should run as a scheduled background service (e.g. .NET `IHostedService`) — recommend running at midnight daily
-- **TOTP** implementation: use standard RFC 6238 TOTP; any authenticator app will work, not just Microsoft Authenticator
-- **SAS tokens** for Blob Storage downloads should have a short expiry (e.g. 15–30 minutes) and be generated on-demand
-- **Refresh tokens** should be stored hashed in the database, not in plaintext
-- **February due date** edge case: if `due_day > 28` and month is February, clamp to `DateTime.DaysInMonth(year, 2)`
-- **Soft deletes** — never hard delete users, transactions, or contracts; always set `is_deleted = true` and `deleted_at = now()`; all queries should filter on `is_deleted = false` by default
-- **Audit logging** — every significant action (payment approval, contract upload, admin invite, password reset, etc.) should write a record to `audit_logs`; do this from the service layer, not the database layer
-- **Rate limiting** — apply to `/api/auth/login`, `/api/auth/register`, and `/api/transactions/payment-intent` at minimum; .NET 9 has built-in rate limiting middleware
-- **File validation** — on contract upload, validate MIME type is `application/pdf`, check magic bytes (not just extension), enforce a max file size (e.g. 20MB)
-- **Defense in depth** — even though the API Gateway validates JWTs first, every internal service must also validate the user's role and resource ownership independently; do not trust that only valid requests will ever reach internal services
-- **Secrets provider abstraction** — All secret retrieval should go through a shared `ISecretsProvider` interface with two implementations:
-  - `LocalSecretsProvider` — reads from a `.secrets` file or folder (local dev only, never committed to Git)
-  - `AzureKeyVaultSecretsProvider` — calls Azure Key Vault (staging and production only)
-  - The active implementation is swapped via environment variable or `appsettings.{Environment}.json` so no code changes are needed between environments
-  - The `.secrets` file/folder must be added to `.gitignore` immediately — it should never be committed
-  - Recommended structure:
-    ```
-    /secrets
-      jwt.secret
-      db.connection
-      stripe.secret
-      stripe.webhook
-      totp.encryption.key
-    ```
-    Or as a single flat JSON file:
-    ```json
-    {
-      "Jwt__SigningKey": "...",
-      "ConnectionStrings__Postgres": "...",
-      "Stripe__SecretKey": "...",
-      "Stripe__WebhookSecret": "...",
-      "Totp__EncryptionKey": "..."
-    }
-    ```
-  - In .NET this pairs cleanly with `IConfiguration` — the local provider can back `IConfiguration` directly, and the Azure provider loads the same keys from Key Vault at startup
-- **Property/Unit modeling** — even with a single property and unit today, all transactions, rent schedules, and contracts should reference a `unit_id` from the start; retrofitting this later is painful
-- **Debug logging strategy** — a persistent, reviewable log store should be maintained on the backend for crash investigation and audit purposes:
-  - **What to log:** every inbound request (method, route, timestamp), service-to-service gRPC calls, background job execution (overdue checks, reminder sends), exceptions and stack traces, payment state transitions, auth events (login attempts, token refresh, invite sends)
-  - **What to never log:** names, emails, addresses, payment card details, JWT tokens, raw passwords, TOTP secrets, or any PII — always substitute with the entity's UUID (e.g. `TenantId: a3f2...` not `Tenant: John Smith`)
-  - **Correlation ID:** every request is assigned a `CorrelationId` (UUID) at the gateway and passed through all downstream gRPC calls — every log entry includes it so a full crash can be reconstructed across all services by filtering on one ID
-  - **Storage:** logs written simultaneously to:
-    - `logs` table in PostgreSQL — queryable, fast, 90-day retention
-    - Azure Blob Storage as rolling daily `.log` files — cold archival, 1-year retention
-  - **Severity levels:** `Debug` (dev only), `Information` (normal ops), `Warning` (recoverable issues), `Error` (failures needing attention), `Critical` (service crash or data integrity issue)
-  - **Log viewer:** Super Admin dashboard includes a basic log viewer filtered by severity, service name, date range, and CorrelationId
-  - **Suggested `logs` table:**
-    ```
-    logs
-      id (UUID, PK)
-      correlation_id (UUID)         ← ties all logs from one request together
-      service_name (string)         ← e.g. "auth-service", "transaction-service"
-      level (enum: debug, info, warning, error, critical)
-      message (string)
-      exception (text, nullable)    ← stack trace if applicable
-      user_id (UUID, nullable)      ← always UUID, never name or email
-      created_at (timestamp)
-    ```
+- **Stripe webhook** bypasses JWT; verified via `Stripe-Signature` HMAC header before processing
+- **Overdue job** runs as .NET `IHostedService` at midnight daily
+- **SAS tokens:** listing URLs are 1-hour; on-demand download URLs are 15-minute; preview URLs add `ContentDisposition: inline`
+- **Refresh tokens** stored as SHA-256 hashes; rotated on every use; single active token per user
+- **Soft deletes:** `is_deleted = true` + `deleted_at = now()` everywhere; all queries filter `is_deleted = false`
+- **February edge case:** if `due_day_of_month > 28`, `DateHelper.GetAdjustedDueDate` clamps to `DateTime.DaysInMonth`
+- **Defense in depth:** every internal service validates JWT and resource ownership independently of the Gateway
+- **Secrets abstraction:** `ISecretsProvider` with `LocalSecretsProvider` (dev) and `AzureVaultSecretsProvider` (prod); `secrets.json` is never committed
+- **Correlation ID:** `X-Correlation-ID` UUID set at Gateway, logged on every service request, enables cross-service trace reconstruction
+- **Enum serialization:** all services use `JsonStringEnumConverter` so enums serialize as strings (e.g. `"PerTenant"` not `0`)
+- **Profile gate:** `IsProfileComplete` checked client-side in `layout.tsx`; redirects to `/profile-setup` before any dashboard content loads
