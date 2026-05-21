@@ -21,4 +21,7 @@ export const contractsApi = {
             },
             body: formData,
         }),
+
+    delete: (id: string) =>
+        apiRequest<void>(`/api/contracts/${id}`, { method: 'DELETE' }),
 };

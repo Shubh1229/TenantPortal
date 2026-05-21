@@ -233,6 +233,19 @@ namespace TenantPortal.Transactions.Controllers
             return Ok("Rent schedule updated successfully");
         }
 
+        /// <summary>Deletes a rent schedule. Admin and Super Admin only.</summary>
+        [Authorize(Policy = AppConstants.Policies.RequireAdmin)]
+        [HttpDelete("/api/rent-schedule/{id}")]
+        public async Task<IActionResult> DeleteRentScheduleAsync([FromRoute] Guid id)
+        {
+            var (userId, role) = GetUserIdAndRole();
+            if (userId == null || role == null) return BadRequest("Invalid user ID or role in token");
+
+            var result = await _rentScheduleService.DeleteRentScheduleAsync(id, userId.Value, role.Value);
+            if (!result) return BadRequest("Failed to delete rent schedule.");
+            return Ok("Rent schedule deleted successfully");
+        }
+
         // ── Helpers ─────────────────────────────────────────────────────────────────
 
         private (Guid? userId, UserRole? role) GetUserIdAndRole()

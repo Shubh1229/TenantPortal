@@ -142,6 +142,16 @@ namespace TenantPortal.Auth.Controllers
             return Ok(new { accessToken = newToken });
         }
 
+        /// <summary>Returns public profile info for any user by ID. Admin-scoped.</summary>
+        [Authorize(Policy = AppConstants.Policies.RequireAdmin)]
+        [HttpGet("users/{id}/public-profile")]
+        public async Task<IActionResult> GetPublicUserProfileAsync([FromRoute] Guid id)
+        {
+            var profile = await _authService.GetPublicUserProfileAsync(id);
+            if (profile == null) return NotFound();
+            return Ok(profile);
+        }
+
         /// <summary>
         /// Returns active users, optionally filtered by role.
         /// Admins see only users they invited; SuperAdmin sees all.

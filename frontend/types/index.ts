@@ -89,6 +89,17 @@ export interface Contract {
   isCurrent: boolean;
   uploadedAt: string;
   downloadUrl: string;
+  previewUrl: string;
+}
+
+export interface PublicUserProfile {
+  id: string;
+  email: string;
+  firstName?: string;
+  lastName?: string;
+  phoneNumber?: string;
+  emergencyContactName?: string;
+  emergencyContactPhone?: string;
 }
 
 export interface Notification {

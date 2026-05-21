@@ -110,5 +110,19 @@ namespace TenantPortal.Transactions.Services
             }
             catch (Exception) { return false; }
         }
+
+        public async Task<bool> DeleteRentScheduleAsync(Guid id, Guid userId, UserRole role)
+        {
+            if (role == UserRole.Tenant) return false;
+            try
+            {
+                var schedule = await _context.RentSchedules.FirstOrDefaultAsync(s => s.Id == id);
+                if (schedule == null) return false;
+                _context.RentSchedules.Remove(schedule);
+                await _context.SaveChangesAsync();
+                return true;
+            }
+            catch (Exception) { return false; }
+        }
     }
 }

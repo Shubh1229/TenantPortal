@@ -191,31 +191,43 @@ namespace TenantPortal.Contracts.Services
             }
         }
 
-        private ContractResponseDTO MapToDTO(Contract contract) => new ContractResponseDTO
+        private ContractResponseDTO MapToDTO(Contract contract)
         {
-            Id = contract.Id,
-            TenantId = contract.TenantId,
-            FileName = contract.FileName,
-            IsCurrent = contract.IsCurrent,
-            UploadedAt = contract.UploadedAt,
-            // Listing URLs use a longer expiry (1 h) so the page remains usable without re-fetching.
-            // Actual download URLs (15 min) are issued by DownloadContractAsync.
-            DownloadUrl = GenerateSasUrl(contract.BlobStoragePath, DateTimeOffset.UtcNow.AddHours(1))
-        };
+            var expiresOn = DateTimeOffset.UtcNow.AddHours(1);
+            return new ContractResponseDTO
+            {
+                Id = contract.Id,
+                TenantId = contract.TenantId,
+                FileName = contract.FileName,
+                IsCurrent = contract.IsCurrent,
+                UploadedAt = contract.UploadedAt,
+                DownloadUrl = GenerateSasUrl(contract.BlobStoragePath, expiresOn),
+                PreviewUrl = GenerateSasUrl(contract.BlobStoragePath, expiresOn, inline: true),
+            };
+        }
 
         /// <summary>
         /// Generates a time-limited Azure Blob SAS read URL.
-        /// Falls back to an empty string when the BlobServiceClient lacks shared-key credentials
-        /// (e.g. managed identity without user-delegation key setup).
+        /// Pass <paramref name="inline"/> = true to add a content-disposition header so browsers
+        /// render the PDF in-page rather than prompting a download.
+        /// Falls back to an empty string when the BlobServiceClient lacks shared-key credentials.
         /// </summary>
-        private string GenerateSasUrl(string blobPath, DateTimeOffset expiresOn)
+        private string GenerateSasUrl(string blobPath, DateTimeOffset expiresOn, bool inline = false)
         {
             try
             {
                 var blobClient = _blobContainerClient.GetBlobClient(blobPath);
-                return blobClient.GenerateSasUri(
-                    Azure.Storage.Sas.BlobSasPermissions.Read,
-                    expiresOn).ToString();
+                if (!inline)
+                    return blobClient.GenerateSasUri(Azure.Storage.Sas.BlobSasPermissions.Read, expiresOn).ToString();
+
+                var builder = new Azure.Storage.Sas.BlobSasBuilder(Azure.Storage.Sas.BlobSasPermissions.Read, expiresOn)
+                {
+                    BlobContainerName = _blobContainerClient.Name,
+                    BlobName = blobPath,
+                    Resource = "b",
+                    ContentDisposition = "inline",
+                };
+                return blobClient.GenerateSasUri(builder).ToString();
             }
             catch
             {

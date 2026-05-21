@@ -428,6 +428,26 @@ namespace TenantPortal.Auth.Services
         }
 
         /// <inheritdoc/>
+        public async Task<PublicUserProfileDTO?> GetPublicUserProfileAsync(Guid targetUserId)
+        {
+            var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == targetUserId && !u.IsDeleted);
+            if (user == null) return null;
+
+            var profile = await _context.UserProfiles.FirstOrDefaultAsync(p => p.UserId == targetUserId);
+
+            return new PublicUserProfileDTO
+            {
+                Id = user.Id,
+                Email = user.Email,
+                FirstName = profile?.FirstName,
+                LastName = profile?.LastName,
+                PhoneNumber = profile?.PhoneNumber,
+                EmergencyContactName = profile?.EmergencyContactName,
+                EmergencyContactPhone = profile?.EmergencyContactPhone,
+            };
+        }
+
+        /// <inheritdoc/>
         public async Task<string?> UpdateUserProfileAsync(Guid userId, UpdateUserProfileRequestDTO request)
         {
             var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == userId && !u.IsDeleted);

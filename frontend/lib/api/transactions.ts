@@ -96,4 +96,10 @@ export const transactionsApi = {
 
     getUnitRentSchedule: (unitId: string) =>
         apiRequest<RentSchedule>(`/api/units/${unitId}/rent-schedule`),
+
+    updateRentSchedule: (id: string, data: { monthlyAmount?: number; dueDayOfMonth?: number }) =>
+        apiRequest<void>(`/api/rent-schedule/${id}`, { method: 'PATCH', body: data }),
+
+    deleteRentSchedule: (id: string) =>
+        apiRequest<void>(`/api/rent-schedule/${id}`, { method: 'DELETE' }),
 };

@@ -28,6 +28,9 @@ namespace TenantPortal.Transactions.Interfaces
         /// <summary>Updates an existing rent schedule's amount or due day. Rejects <see cref="UserRole.Tenant"/> callers.</summary>
         Task<bool> UpdateRentScheduleAsync(UpdateRentScheduleRequestDTO request, Guid userId, UserRole role);
 
+        /// <summary>Permanently deletes a rent schedule. Rejects <see cref="UserRole.Tenant"/> callers.</summary>
+        Task<bool> DeleteRentScheduleAsync(Guid id, Guid userId, UserRole role);
+
         /// <summary>
         /// Calculates the next due date following <paramref name="refDate"/>,
         /// clamping to the last valid day of February and 30-day months.

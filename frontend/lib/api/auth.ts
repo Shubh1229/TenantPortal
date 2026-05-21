@@ -57,6 +57,9 @@ export const authApi = {
             `/api/auth/users${role ? `?role=${role}` : ''}`
         ),
 
+    getPublicProfile: (userId: string) =>
+        apiRequest<import('@/types').PublicUserProfile>(`/api/auth/users/${userId}/public-profile`),
+
     devLogin: (email: string, password: string) =>
         apiRequest<import('@/types').LoginResponse>('/api/auth/dev-login', {
             method: 'POST',

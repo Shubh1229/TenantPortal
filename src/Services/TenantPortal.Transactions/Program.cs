@@ -70,7 +70,9 @@ builder.Services.AddSingleton<ISecretsProvider>(
     new AzureVaultSecretsProvider("https://singhresidenthub-vault.vault.azure.net/"));
 builder.Services.AddHostedService<OverduePaymentJob>();
 
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .AddJsonOptions(o =>
+        o.JsonSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter()));
 
 var app = builder.Build();
 

@@ -79,6 +79,9 @@ namespace TenantPortal.Auth.Interfaces
         /// <summary>Returns the full profile (email, role, profile fields, notification emails) for the given user.</summary>
         Task<UserProfileDTO?> GetUserProfileAsync(Guid userId);
 
+        /// <summary>Returns public profile info (name, phone, emergency contact) for any user. Admin-scoped.</summary>
+        Task<PublicUserProfileDTO?> GetPublicUserProfileAsync(Guid targetUserId);
+
         /// <summary>Creates or updates the user's personal profile. Marks IsProfileComplete = true on first save.</summary>
         Task<string?> UpdateUserProfileAsync(Guid userId, UpdateUserProfileRequestDTO request);
 
