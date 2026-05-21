@@ -1,5 +1,5 @@
 import { apiRequest } from './client';
-import { AdminRegisterResponse, ConnectStatus, LoginRequest, LoginResponse, TotpValidationRequest, UserProfile } from '@/types';
+import { AdminRegisterResponse, ConnectStatus, LoginRequest, LoginResponse, SubscriptionStatusResponse, TotpValidationRequest, UserProfile } from '@/types';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
@@ -41,10 +41,7 @@ export const authApi = {
         }),
 
     getSubscriptionStatus: () =>
-        apiRequest<{ status: string; isActive: boolean; maxTenants: number | null; currentTenantCount: number }>(
-            '/api/auth/subscription/status',
-            { method: 'GET' }
-        ),
+        apiRequest<SubscriptionStatusResponse>('/api/auth/subscription/status', { method: 'GET' }),
 
     getBillingPortalUrl: (returnUrl: string) =>
         apiRequest<{ url: string }>('/api/auth/subscription/portal', {

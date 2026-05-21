@@ -26,7 +26,8 @@ export type NotificationType =
   | 'PaymentOverdue'
   | 'RentReminder'
   | 'InviteCreated'
-  | 'ContractUploaded';
+  | 'ContractUploaded'
+  | 'TrialEnding';
 
 export interface User {
   id: string;
@@ -151,6 +152,7 @@ export interface SubscriptionStatusResponse {
   isActive: boolean;
   maxTenants: number | null;
   currentTenantCount: number;
+  trialEnd: string | null;
 }
 
 export interface AdminRegisterResponse {

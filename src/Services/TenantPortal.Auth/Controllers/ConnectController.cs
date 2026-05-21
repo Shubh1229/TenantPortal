@@ -93,6 +93,20 @@ namespace TenantPortal.Auth.Controllers
             return Ok(new { connectedAccountId = accountId });
         }
 
+        /// <summary>
+        /// Internal endpoint called by the Transactions service before creating a PaymentIntent
+        /// or accepting an external payment. Returns whether the admin can currently receive
+        /// tenant payments — blocked during trial until a payment method is added to Stripe.
+        /// NOT exposed through the API gateway — internal traffic only.
+        /// </summary>
+        [AllowAnonymous]
+        [HttpGet("api/auth/internal/admin-billing-status/{adminId:guid}")]
+        public async Task<IActionResult> GetAdminBillingStatusAsync([FromRoute] Guid adminId)
+        {
+            var canReceive = await _connectService.GetCanReceivePaymentsAsync(adminId);
+            return Ok(new { canReceivePayments = canReceive });
+        }
+
         private Guid? GetUserId() =>
             Guid.TryParse(User.FindFirstValue(AppConstants.Claims.UserId), out var id) ? id : null;
     }

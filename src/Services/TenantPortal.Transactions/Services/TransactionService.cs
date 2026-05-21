@@ -1,4 +1,7 @@
-﻿using TenantPortal.Shared.Enums;
+﻿using Microsoft.Extensions.Configuration;
+using System.Net.Http.Json;
+using System.Text.Json;
+using TenantPortal.Shared.Enums;
 using TenantPortal.Transactions.Data;
 using TenantPortal.Transactions.DTOs;
 using TenantPortal.Transactions.Interfaces;
@@ -10,9 +13,20 @@ namespace TenantPortal.Transactions.Services
     public class TransactionService : ITransactionService
     {
         private readonly TransactionDbContext _context;
-        public TransactionService(TransactionDbContext context) 
+        private readonly IHttpClientFactory _httpClientFactory;
+        private readonly IConfiguration _configuration;
+        private readonly ILogger<TransactionService> _logger;
+
+        public TransactionService(
+            TransactionDbContext context,
+            IHttpClientFactory httpClientFactory,
+            IConfiguration configuration,
+            ILogger<TransactionService> logger)
         {
             _context = context;
+            _httpClientFactory = httpClientFactory;
+            _configuration = configuration;
+            _logger = logger;
         }
         public async Task<bool> ApproveExternalPaymentRequestAsync(Guid transactionId)
         {
@@ -158,6 +172,24 @@ namespace TenantPortal.Transactions.Services
         {
             try
             {
+                var unit = await _context.Units.FirstOrDefaultAsync(u => u.Id == request.UnitId && !u.IsDeleted);
+                var property = unit != null
+                    ? await _context.Properties.FirstOrDefaultAsync(p => p.Id == unit.PropertyId && !p.IsDeleted)
+                    : null;
+
+                // Block if we can't resolve the admin — can't verify billing status
+                if (property?.AdminId == null)
+                {
+                    _logger.LogWarning("External payment blocked — cannot resolve admin for unit {UnitId}.", request.UnitId);
+                    return false;
+                }
+
+                if (!await CheckAdminCanReceivePaymentsAsync(property.AdminId.Value))
+                {
+                    _logger.LogWarning("External payment blocked — admin {AdminId} billing gate failed.", property.AdminId);
+                    return false;
+                }
+
                 Transaction transaction = new Transaction
                 {
                     Id = Guid.NewGuid(),
@@ -179,6 +211,24 @@ namespace TenantPortal.Transactions.Services
                 return true;
             } catch (Exception)
             {
+                return false;
+            }
+        }
+
+        private async Task<bool> CheckAdminCanReceivePaymentsAsync(Guid adminId)
+        {
+            try
+            {
+                var authUrl = _configuration["Auth:HttpUrl"] ?? "http://localhost:5001";
+                var response = await _httpClientFactory.CreateClient()
+                    .GetAsync($"{authUrl}/api/auth/internal/admin-billing-status/{adminId}");
+                if (!response.IsSuccessStatusCode) return false;
+                var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+                return body.GetProperty("canReceivePayments").GetBoolean();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to fetch billing status for admin {AdminId}.", adminId);
                 return false;
             }
         }

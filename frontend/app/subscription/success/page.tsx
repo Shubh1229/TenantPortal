@@ -51,10 +51,10 @@ function SuccessContent() {
                 <CheckCircle size={32} className="text-emerald-400" />
             </div>
             <div>
-                <h1 className="text-2xl font-semibold text-white">You&apos;re subscribed!</h1>
+                <h1 className="text-2xl font-semibold text-white">Your free trial has started!</h1>
                 <p className="mt-2 text-sm text-zinc-400 max-w-sm mx-auto">
-                    Payment received. Your account is being activated — this usually takes a few seconds.
-                    Once active, sign in with the email and password you registered with.
+                    Your 7-day free trial is active. You&apos;ll receive an email from Stripe before your trial ends
+                    to set up billing. No charge until the trial is over.
                 </p>
             </div>
 
@@ -66,6 +66,7 @@ function SuccessContent() {
                     'Scan the QR code you were shown during setup',
                     'Sign in using your email, password, and the 6-digit code',
                     'Start inviting tenants from the dashboard',
+                    'Add a payment method before day 7 to keep your account active',
                 ].map((step, i) => (
                     <div key={i} className="flex items-start gap-3 text-sm text-zinc-300">
                         <span className="w-5 h-5 rounded-full bg-indigo-600/20 text-indigo-400 text-xs flex items-center justify-center shrink-0 font-medium mt-0.5">

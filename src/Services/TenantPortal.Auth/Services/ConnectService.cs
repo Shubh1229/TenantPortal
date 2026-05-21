@@ -4,6 +4,7 @@ using TenantPortal.Auth.Data;
 using TenantPortal.Auth.DTOs;
 using TenantPortal.Auth.Interfaces;
 using TenantPortal.Shared.Constants;
+using TenantPortal.Shared.Enums;
 using TenantPortal.Shared.Interfaces;
 
 namespace TenantPortal.Auth.Services
@@ -141,6 +142,32 @@ namespace TenantPortal.Auth.Services
             }
 
             return user.StripeConnectedAccountId;
+        }
+
+        /// <inheritdoc/>
+        public async Task<bool> GetCanReceivePaymentsAsync(Guid adminId)
+        {
+            var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == adminId && !u.IsDeleted);
+            if (user == null) return false;
+
+            // Active and PastDue have an established billing relationship (card on file, Stripe retrying).
+            if (user.SubscriptionStatus == SubscriptionStatus.Active ||
+                user.SubscriptionStatus == SubscriptionStatus.PastDue)
+                return true;
+
+            // None, Canceled, or any unrecognised status — no billing relationship, block payments.
+            if (user.SubscriptionStatus != SubscriptionStatus.Trialing)
+                return false;
+
+            // Trialing admin: require a payment method on file so rent can eventually be charged.
+            if (user.StripeCustomerId == null) return false;
+
+            await ConfigureStripeAsync();
+            var customer = await new CustomerService().GetAsync(user.StripeCustomerId,
+                new CustomerGetOptions { Expand = new List<string> { "invoice_settings.default_payment_method" } });
+
+            return customer.InvoiceSettings?.DefaultPaymentMethodId != null
+                || customer.DefaultSourceId != null;
         }
 
         private async Task ConfigureStripeAsync()

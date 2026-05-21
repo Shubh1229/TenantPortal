@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using Stripe;
 using System.Diagnostics;
 using System.IdentityModel.Tokens.Jwt;
 using System.Text;
@@ -45,16 +46,19 @@ namespace TenantPortal.Auth.Services
 
             var tests = new List<TestResult>
             {
-                await RunTest("Auth DB: Connectivity",       "Database",     TestDbConnectivityAsync),
-                await RunTest("Auth DB: Migrations",         "Database",     TestDbMigrationsAsync),
-                await RunTest("Auth DB: User Statistics",    "Database",     TestUserStatsAsync),
-                await RunTest("Auth DB: Invite Tokens",      "Database",     TestInviteTokensAsync),
-                await RunTest("Key Vault: JWT Signing Key",  "Azure",        TestKvJwtKeyAsync),
-                await RunTest("Key Vault: TOTP Enc Key",     "Azure",        TestKvTotpKeyAsync),
-                await RunTest("Key Vault: ACS Connection",   "Azure",        TestKvAcsAsync),
-                await RunTest("Security: TOTP Encryption",   "Security",     TestTotpRoundTripAsync),
-                await RunTest("Security: JWT Generation",    "Security",     TestJwtAsync),
-                await RunTest("gRPC: Notifications Channel", "Connectivity", TestGrpcPingAsync),
+                await RunTest("Auth DB: Connectivity",          "Database",     TestDbConnectivityAsync),
+                await RunTest("Auth DB: Migrations",            "Database",     TestDbMigrationsAsync),
+                await RunTest("Auth DB: User Statistics",       "Database",     TestUserStatsAsync),
+                await RunTest("Auth DB: Invite Tokens",         "Database",     TestInviteTokensAsync),
+                await RunTest("Auth DB: Subscription Stats",    "Database",     TestSubscriptionStatsAsync),
+                await RunTest("Key Vault: JWT Signing Key",     "Azure",        TestKvJwtKeyAsync),
+                await RunTest("Key Vault: TOTP Enc Key",        "Azure",        TestKvTotpKeyAsync),
+                await RunTest("Key Vault: ACS Connection",      "Azure",        TestKvAcsAsync),
+                await RunTest("Security: TOTP Encryption",      "Security",     TestTotpRoundTripAsync),
+                await RunTest("Security: JWT Generation",       "Security",     TestJwtAsync),
+                await RunTest("gRPC: Notifications Channel",    "Connectivity", TestGrpcPingAsync),
+                await RunTest("Stripe: Secret Key",             "Stripe",       TestStripeSecretKeyAsync),
+                await RunTest("Stripe: Webhook Secret Formats", "Stripe",       TestStripeWebhookSecretsAsync),
             };
 
             var result = new TestSuiteResult
@@ -299,6 +303,79 @@ namespace TenantPortal.Auth.Services
             return (connected,
                 connected ? $"gRPC channel ready — {detail}" : $"gRPC channel unavailable — {detail}",
                 logs);
+        }
+
+        // ── Stripe ────────────────────────────────────────────────────────────
+
+        private async Task<(bool, string, List<string>)> TestStripeSecretKeyAsync()
+        {
+            var logs = new List<string>();
+            var key = await _secrets.GetSecretAsync(SecretKeys.StripeSecretKey);
+            if (string.IsNullOrWhiteSpace(key))
+            {
+                logs.Add("ERROR: Stripe secret key is null or empty.");
+                return (false, "Stripe secret key missing from Key Vault", logs);
+            }
+            var prefix = key.Length >= 8 ? key[..8] : key;
+            logs.Add($"Key prefix: {prefix}... (mode: {(key.StartsWith("sk_live_") ? "LIVE" : key.StartsWith("sk_test_") ? "TEST" : "UNKNOWN")})");
+
+            StripeConfiguration.ApiKey = key;
+            var balance = await new BalanceService().GetAsync();
+            logs.Add($"Balance retrieved: available={balance.Available.Count} pending={balance.Pending.Count}");
+            return (true, $"Stripe API key valid ({prefix}...)", logs);
+        }
+
+        private async Task<(bool, string, List<string>)> TestStripeWebhookSecretsAsync()
+        {
+            var logs = new List<string>();
+            var checks = new[]
+            {
+                ("Payment webhook",       SecretKeys.StripeWebhookSecret),
+                ("Subscription webhook",  SecretKeys.StripeSubscriptionWebhookSecret),
+                ("Connect webhook",       SecretKeys.StripeConnectWebhookSecret),
+            };
+
+            var allPassed = true;
+            foreach (var (label, keyName) in checks)
+            {
+                var secret = await _secrets.GetSecretAsync(keyName);
+                if (string.IsNullOrWhiteSpace(secret))
+                {
+                    logs.Add($"  FAIL  {label}: missing");
+                    allPassed = false;
+                }
+                else if (!secret.StartsWith("whsec_") || secret.Length < 30)
+                {
+                    logs.Add($"  FAIL  {label}: present but invalid format (length={secret.Length}, starts with '{secret[..Math.Min(10, secret.Length)]}')");
+                    allPassed = false;
+                }
+                else
+                {
+                    logs.Add($"  PASS  {label}: whsec_... ({secret.Length} chars)");
+                }
+            }
+            return (allPassed,
+                allPassed ? "All 3 webhook secrets present and correctly formatted" : "One or more webhook secrets missing or malformed",
+                logs);
+        }
+
+        private async Task<(bool, string, List<string>)> TestSubscriptionStatsAsync()
+        {
+            var logs = new List<string>();
+            logs.Add("Admin subscription status breakdown:");
+            foreach (SubscriptionStatus status in Enum.GetValues<SubscriptionStatus>())
+            {
+                var count = await _context.Users.CountAsync(u =>
+                    u.Role == UserRole.Admin && u.SubscriptionStatus == status && !u.IsDeleted);
+                logs.Add($"  {status,-18}: {count}");
+            }
+            var withStripe    = await _context.Users.CountAsync(u => u.Role == UserRole.Admin && u.StripeCustomerId != null && !u.IsDeleted);
+            var withoutStripe = await _context.Users.CountAsync(u => u.Role == UserRole.Admin && u.StripeCustomerId == null && !u.IsDeleted);
+            logs.Add($"  Has Stripe customer:   {withStripe}");
+            logs.Add($"  No Stripe customer:    {withoutStripe}");
+            if (withoutStripe > 0)
+                logs.Add($"  NOTE: {withoutStripe} admin(s) have no StripeCustomerId — may be legacy or incomplete registrations.");
+            return (true, $"Subscription stats logged ({withStripe} admin(s) with Stripe)", logs);
         }
     }
 }

@@ -33,5 +33,13 @@ namespace TenantPortal.Auth.Interfaces
         /// Returns <c>null</c> if the admin has not completed Connect onboarding.
         /// </summary>
         Task<string?> GetConnectedAccountIdAsync(Guid adminId);
+
+        /// <summary>
+        /// Returns whether the admin can currently receive tenant payments.
+        /// Active and PastDue admins always can. Trialing admins can only receive
+        /// payments once they have a default payment method on file with Stripe
+        /// (checked live — no card means no payment pass-through during trial).
+        /// </summary>
+        Task<bool> GetCanReceivePaymentsAsync(Guid adminId);
     }
 }

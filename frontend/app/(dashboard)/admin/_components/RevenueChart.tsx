@@ -34,7 +34,8 @@ function aggregateByMonth(transactions: Transaction[]): MonthPoint[] {
         .sort(([a], [b]) => a.localeCompare(b))
         .slice(-12)
         .map(([key, revenue]) => ({
-            month: new Date(key + '-01').toLocaleDateString('en-US', { month: 'short', year: '2-digit' }),
+            month: new Date(parseInt(key.slice(0, 4)), parseInt(key.slice(5, 7)) - 1, 1)
+            .toLocaleDateString('en-US', { month: 'short', year: 'numeric' }),
             revenue: Math.round(revenue * 100) / 100,
         }));
 }

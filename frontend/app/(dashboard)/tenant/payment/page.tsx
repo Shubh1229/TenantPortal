@@ -136,8 +136,13 @@ export default function PaymentPage() {
             });
             setClientSecret(secret);
             setStep('pay');
-        } catch {
-            setIntentError('Failed to initialise payment. Please try again.');
+        } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : '';
+            if (msg.toLowerCase().includes('blocked') || msg.toLowerCase().includes('billing')) {
+                setIntentError('Payments are currently unavailable — your landlord needs to complete their billing setup first. Please contact them directly.');
+            } else {
+                setIntentError('Failed to initialise payment. Please try again.');
+            }
         } finally {
             setIsCreatingIntent(false);
         }
@@ -327,7 +332,9 @@ export default function PaymentPage() {
                             </div>
                         )}
                         {extResult === 'error' && (
-                            <p className="text-sm text-red-400">Failed to submit request. Please try again.</p>
+                            <p className="text-sm text-red-400">
+                                Payments are currently unavailable — your landlord needs to complete their billing setup first. Please contact them directly.
+                            </p>
                         )}
                         <Button
                             type="submit"

@@ -58,6 +58,12 @@ namespace TenantPortal.Transactions.Services
                     return null;
                 }
 
+                if (property?.AdminId != null && !await CheckAdminCanReceivePaymentsAsync(property.AdminId.Value))
+                {
+                    _logger.LogWarning("Payment intent creation blocked — admin {AdminId} has not added a payment method yet (trial period).", property.AdminId);
+                    return null;
+                }
+
                 var stripeKey = await _secretsProvider.GetSecretAsync(SecretKeys.StripeSecretKey);
                 StripeConfiguration.ApiKey = stripeKey;
 
@@ -142,6 +148,24 @@ namespace TenantPortal.Transactions.Services
             }
         }
 
+        private async Task<bool> CheckAdminCanReceivePaymentsAsync(Guid adminId)
+        {
+            try
+            {
+                var authUrl = _configuration["Auth:HttpUrl"] ?? "http://localhost:5001";
+                var response = await _httpClientFactory.CreateClient()
+                    .GetAsync($"{authUrl}/api/auth/internal/admin-billing-status/{adminId}");
+                if (!response.IsSuccessStatusCode) return false;
+                var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+                return body.GetProperty("canReceivePayments").GetBoolean();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to fetch billing status for admin {AdminId}.", adminId);
+                return false;
+            }
+        }
+
         public async Task<bool> HandleWebhookEventAsync(string requestBody, string stripeSignature)
         {
             try
@@ -186,6 +210,22 @@ namespace TenantPortal.Transactions.Services
                     var property = unit != null ? await _context.Properties.FirstOrDefaultAsync(p => p.Id == unit.PropertyId) : null;
                     if (property?.AdminId != null)
                         _ = NotifyAdminPaymentFailedAsync(property.AdminId.Value, unit!.UnitNumber, transaction.Amount);
+                }
+                else if (stripeEvent.Type == "payment_intent.canceled")
+                {
+                    var paymentIntent = stripeEvent.Data.Object as PaymentIntent;
+                    if (paymentIntent == null) return false;
+                    var transaction = await _context.Transactions
+                        .FirstOrDefaultAsync(t => t.StripePaymentIntentId == paymentIntent.Id);
+                    if (transaction == null)
+                    {
+                        _logger.LogWarning("Received payment_intent.canceled for unknown PaymentIntent {PaymentIntentId}.", paymentIntent.Id);
+                        return true;
+                    }
+                    transaction.Status = TransactionStatus.Declined;
+                    transaction.UpdatedAt = DateTime.UtcNow;
+                    await _context.SaveChangesAsync();
+                    _logger.LogInformation("Transaction {TransactionId} declined — PaymentIntent {PaymentIntentId} was canceled.", transaction.Id, paymentIntent.Id);
                 }
                 return true;
             }

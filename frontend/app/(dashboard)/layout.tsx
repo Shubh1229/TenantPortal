@@ -44,6 +44,7 @@ function roleNavItems(role: string | null): NavItem[] {
             { href: '/admin/contracts', label: 'Contracts', icon: <FileText size={18} /> },
             { href: '/admin/rent-schedule', label: 'Rent Schedule', icon: <Calendar size={18} /> },
             { href: '/admin/payouts', label: 'Payouts', icon: <Landmark size={18} /> },
+            { href: '/admin/subscription', label: 'Subscription', icon: <CreditCard size={18} /> },
             { href: '/profile', label: 'Profile', icon: <User size={18} /> },
             { href: '/settings', label: 'Settings', icon: <Settings size={18} /> },
         ];
@@ -66,6 +67,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const router = useRouter();
     const pathname = usePathname();
     const [profileChecked, setProfileChecked] = useState(false);
+    const [subWarning, setSubWarning] = useState<string | null>(null);
 
     const canSwitchRoles = role === 'SuperAdmin' || isSuperAdminSwitched;
 
@@ -79,6 +81,23 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             })
             .catch(() => setProfileChecked(true));
     }, [accessToken, isLoading, pathname, profileChecked, router]);
+
+    // Fetch subscription warning for Admins (PastDue or trial ending ≤3 days)
+    useEffect(() => {
+        if (!accessToken || isLoading || role !== 'Admin') return;
+        authApi.getSubscriptionStatus()
+            .then(s => {
+                if (s.status === 'PastDue') {
+                    setSubWarning('Your subscription payment failed. Update your payment method to restore access.');
+                } else if (s.status === 'Trialing' && s.trialEnd) {
+                    const daysLeft = Math.ceil((new Date(s.trialEnd).getTime() - Date.now()) / 86_400_000);
+                    if (daysLeft <= 3) {
+                        setSubWarning(`Your free trial ends in ${daysLeft <= 0 ? 'less than a day' : daysLeft === 1 ? '1 day' : `${daysLeft} days`}. Add a payment method to continue.`);
+                    }
+                }
+            })
+            .catch(() => {});
+    }, [accessToken, isLoading, role]);
 
     async function handleSwitchRole(targetRole: string) {
         try {
@@ -113,9 +132,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const navItems = roleNavItems(role);
 
     return (
-        <div className="flex min-h-screen bg-zinc-950 text-zinc-100">
+        <div className="flex h-screen bg-zinc-950 text-zinc-100">
             {/* Sidebar */}
-            <aside className="w-60 shrink-0 flex flex-col bg-zinc-900 border-r border-zinc-800">
+            <aside className="w-60 shrink-0 flex flex-col bg-zinc-900 border-r border-zinc-800 overflow-y-auto">
                 {/* Brand */}
                 <div className="px-5 py-5 border-b border-zinc-800 flex items-center gap-2.5">
                     <div className="w-7 h-7 rounded-lg bg-indigo-600 flex items-center justify-center shrink-0">
@@ -182,6 +201,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                                 Viewing as {role} — your actual account is SuperAdmin
                             </p>
                         )}
+                    </div>
+                )}
+
+                {/* Subscription warning */}
+                {subWarning && (
+                    <div className="px-3 pb-2">
+                        <Link href="/admin/subscription" className="block rounded-lg bg-amber-500/10 border border-amber-500/20 px-3 py-2.5 text-xs text-amber-300 hover:bg-amber-500/15 transition-colors">
+                            {subWarning}
+                        </Link>
                     </div>
                 )}
 

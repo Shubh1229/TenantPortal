@@ -64,7 +64,7 @@ export default function AdminDashboard() {
             .finally(() => setIsLoading(false));
     }, []);
 
-    const pendingRequests = transactions.filter(t => t.status === 'Pending');
+    const pendingRequests = transactions.filter(t => t.status === 'Pending' && t.paymentMethod === 'External');
     const overduePayments = transactions.filter(t => t.status === 'Overdue');
     const confirmedRevenue = transactions
         .filter(t => t.status === 'Confirmed')
