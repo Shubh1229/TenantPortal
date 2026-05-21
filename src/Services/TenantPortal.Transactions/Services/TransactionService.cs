@@ -248,5 +248,32 @@ namespace TenantPortal.Transactions.Services
                 return false;
             }
         }
+
+        public async Task<UnitPropertyInfoDTO?> GetMyUnitInfoAsync(Guid tenantId)
+        {
+            var assignment = await _context.TenantUnitAssignments
+                .FirstOrDefaultAsync(a => a.TenantId == tenantId && a.EndDate == null);
+            if (assignment == null) return null;
+
+            var unit = await _context.Units.FirstOrDefaultAsync(u => u.Id == assignment.UnitId && !u.IsDeleted);
+            if (unit == null) return null;
+
+            var property = await _context.Properties.FirstOrDefaultAsync(p => p.Id == unit.PropertyId && !p.IsDeleted);
+            if (property == null) return null;
+
+            return new UnitPropertyInfoDTO
+            {
+                UnitId = unit.Id,
+                UnitNumber = unit.UnitNumber,
+                Bedrooms = unit.Bedrooms,
+                Bathrooms = unit.Bathrooms,
+                SquareFeet = unit.SquareFeet,
+                BillingMode = unit.BillingMode,
+                PropertyId = property.Id,
+                PropertyName = property.Name,
+                PropertyAddress = property.Address,
+                AdminId = property.AdminId,
+            };
+        }
     }
 }

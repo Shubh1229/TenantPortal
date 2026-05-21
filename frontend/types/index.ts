@@ -118,6 +118,21 @@ export interface RentSchedule {
   dueDayOfMonth: number;
   startDate: string;
   endDate?: string;
+  isDeleted: boolean;
+  deletedAt?: string;
+}
+
+export interface UnitPropertyInfo {
+  unitId: string;
+  unitNumber: string;
+  bedrooms?: number;
+  bathrooms?: number;
+  squareFeet?: number;
+  billingMode: BillingMode;
+  propertyId: string;
+  propertyName: string;
+  propertyAddress: string;
+  adminId?: string;
 }
 
 export interface ReminderSetting {

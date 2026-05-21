@@ -79,7 +79,7 @@ namespace TenantPortal.Transactions.Services
         {
             // First check for a per-tenant schedule (works regardless of billing mode)
             var perTenantSchedule = await _context.RentSchedules
-                .FirstOrDefaultAsync(s => s.TenantId == tenantId);
+                .FirstOrDefaultAsync(s => s.TenantId == tenantId && !s.IsDeleted);
             if (perTenantSchedule != null) return perTenantSchedule;
 
             // Fall back to shared-unit schedule via the tenant's active assignment
@@ -88,15 +88,39 @@ namespace TenantPortal.Transactions.Services
             if (assignment == null) return null;
 
             return await _context.RentSchedules
-                .FirstOrDefaultAsync(s => s.UnitId == assignment.UnitId && s.TenantId == null);
+                .FirstOrDefaultAsync(s => s.UnitId == assignment.UnitId && s.TenantId == null && !s.IsDeleted);
         }
 
         public async Task<List<RentSchedule>> GetAllRentSchedulesAsync(Guid userId, UserRole role)
         {
-            var query = _context.RentSchedules.AsQueryable();
+            var query = _context.RentSchedules.Where(r => !r.IsDeleted);
             if (role == UserRole.Admin)
                 query = query.Where(r => r.CreatedBy == userId);
             return await query.ToListAsync();
+        }
+
+        public async Task<List<RentSchedule>> GetDeletedRentSchedulesAsync(Guid userId, UserRole role)
+        {
+            var query = _context.RentSchedules.Where(r => r.IsDeleted);
+            if (role == UserRole.Admin)
+                query = query.Where(r => r.CreatedBy == userId);
+            return await query.ToListAsync();
+        }
+
+        public async Task<bool> RestoreRentScheduleAsync(Guid id, Guid userId, UserRole role)
+        {
+            if (role == UserRole.Tenant) return false;
+            try
+            {
+                var schedule = await _context.RentSchedules.FirstOrDefaultAsync(s => s.Id == id && s.IsDeleted);
+                if (schedule == null) return false;
+                schedule.IsDeleted = false;
+                schedule.DeletedAt = null;
+                schedule.UpdatedAt = DateTime.UtcNow;
+                await _context.SaveChangesAsync();
+                return true;
+            }
+            catch (Exception) { return false; }
         }
 
         public async Task<bool> UpdateRentScheduleAsync(UpdateRentScheduleRequestDTO request, Guid userId, UserRole role)
@@ -121,9 +145,11 @@ namespace TenantPortal.Transactions.Services
             if (role == UserRole.Tenant) return false;
             try
             {
-                var schedule = await _context.RentSchedules.FirstOrDefaultAsync(s => s.Id == id);
+                var schedule = await _context.RentSchedules.FirstOrDefaultAsync(s => s.Id == id && !s.IsDeleted);
                 if (schedule == null) return false;
-                _context.RentSchedules.Remove(schedule);
+                schedule.IsDeleted = true;
+                schedule.DeletedAt = DateTime.UtcNow;
+                schedule.UpdatedAt = DateTime.UtcNow;
                 await _context.SaveChangesAsync();
                 return true;
             }

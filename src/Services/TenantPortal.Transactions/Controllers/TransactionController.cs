@@ -205,6 +205,42 @@ namespace TenantPortal.Transactions.Controllers
             return Ok(schedules);
         }
 
+        /// <summary>Returns all soft-deleted rent schedules scoped to the caller.</summary>
+        [Authorize(Policy = AppConstants.Policies.RequireAdmin)]
+        [HttpGet("/api/rent-schedules/deleted")]
+        public async Task<IActionResult> GetDeletedRentSchedulesAsync()
+        {
+            var (userId, role) = GetUserIdAndRole();
+            if (userId == null || role == null) return BadRequest("Invalid user ID or role in token");
+            var schedules = await _rentScheduleService.GetDeletedRentSchedulesAsync(userId.Value, role.Value);
+            return Ok(schedules);
+        }
+
+        /// <summary>Restores a soft-deleted rent schedule. Admin and Super Admin only.</summary>
+        [Authorize(Policy = AppConstants.Policies.RequireAdmin)]
+        [HttpPatch("/api/rent-schedule/{id}/restore")]
+        public async Task<IActionResult> RestoreRentScheduleAsync([FromRoute] Guid id)
+        {
+            var (userId, role) = GetUserIdAndRole();
+            if (userId == null || role == null) return BadRequest("Invalid user ID or role in token");
+            var result = await _rentScheduleService.RestoreRentScheduleAsync(id, userId.Value, role.Value);
+            if (!result) return BadRequest("Failed to restore rent schedule.");
+            return Ok("Rent schedule restored successfully");
+        }
+
+        /// <summary>Returns the current tenant's assigned unit and property info.</summary>
+        [Authorize(Policy = AppConstants.Policies.RequireTenant)]
+        [HttpGet("/api/units/my-info")]
+        public async Task<IActionResult> GetMyUnitInfoAsync()
+        {
+            var (userId, _) = GetUserIdAndRole();
+            if (userId == null) return BadRequest("Invalid user ID in token");
+
+            var assignment = await _transactionService.GetMyUnitInfoAsync(userId.Value);
+            if (assignment == null) return NotFound("No unit assignment found.");
+            return Ok(assignment);
+        }
+
         /// <summary>Creates a rent schedule for a tenant. Admin and Super Admin only.</summary>
         [Authorize(Policy = AppConstants.Policies.RequireAdmin)]
         [HttpPost("/api/rent-schedule")]

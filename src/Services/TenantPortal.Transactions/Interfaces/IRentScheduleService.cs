@@ -28,8 +28,14 @@ namespace TenantPortal.Transactions.Interfaces
         /// <summary>Updates an existing rent schedule's amount or due day. Rejects <see cref="UserRole.Tenant"/> callers.</summary>
         Task<bool> UpdateRentScheduleAsync(UpdateRentScheduleRequestDTO request, Guid userId, UserRole role);
 
-        /// <summary>Permanently deletes a rent schedule. Rejects <see cref="UserRole.Tenant"/> callers.</summary>
+        /// <summary>Soft-deletes a rent schedule (sets IsDeleted). Rejects <see cref="UserRole.Tenant"/> callers.</summary>
         Task<bool> DeleteRentScheduleAsync(Guid id, Guid userId, UserRole role);
+
+        /// <summary>Returns all soft-deleted rent schedules scoped to the caller.</summary>
+        Task<List<RentSchedule>> GetDeletedRentSchedulesAsync(Guid userId, UserRole role);
+
+        /// <summary>Restores a soft-deleted rent schedule. Rejects <see cref="UserRole.Tenant"/> callers.</summary>
+        Task<bool> RestoreRentScheduleAsync(Guid id, Guid userId, UserRole role);
 
         /// <summary>
         /// Calculates the next due date following <paramref name="refDate"/>,

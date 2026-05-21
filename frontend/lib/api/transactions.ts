@@ -1,5 +1,5 @@
 import { apiRequest } from './client';
-import { BillingMode, Property, RentSchedule, Transaction, Unit } from '@/types';
+import { BillingMode, Property, RentSchedule, Transaction, Unit, UnitPropertyInfo } from '@/types';
 
 export const transactionsApi = {
     getAll: () =>
@@ -94,6 +94,9 @@ export const transactionsApi = {
     getAllRentSchedules: () =>
         apiRequest<RentSchedule[]>('/api/rent-schedules'),
 
+    getDeletedRentSchedules: () =>
+        apiRequest<RentSchedule[]>('/api/rent-schedules/deleted'),
+
     getUnitRentSchedule: (unitId: string) =>
         apiRequest<RentSchedule>(`/api/units/${unitId}/rent-schedule`),
 
@@ -102,4 +105,10 @@ export const transactionsApi = {
 
     deleteRentSchedule: (id: string) =>
         apiRequest<void>(`/api/rent-schedule/${id}`, { method: 'DELETE' }),
+
+    restoreRentSchedule: (id: string) =>
+        apiRequest<void>(`/api/rent-schedule/${id}/restore`, { method: 'PATCH' }),
+
+    getMyUnitInfo: () =>
+        apiRequest<UnitPropertyInfo>('/api/units/my-info'),
 };

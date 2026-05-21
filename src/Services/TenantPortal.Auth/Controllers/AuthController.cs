@@ -142,8 +142,8 @@ namespace TenantPortal.Auth.Controllers
             return Ok(new { accessToken = newToken });
         }
 
-        /// <summary>Returns public profile info for any user by ID. Admin-scoped.</summary>
-        [Authorize(Policy = AppConstants.Policies.RequireAdmin)]
+        /// <summary>Returns public profile info for any user by ID. Any authenticated user may call this to look up admins or co-tenants.</summary>
+        [Authorize(Policy = AppConstants.Policies.RequireTenant)]
         [HttpGet("users/{id}/public-profile")]
         public async Task<IActionResult> GetPublicUserProfileAsync([FromRoute] Guid id)
         {

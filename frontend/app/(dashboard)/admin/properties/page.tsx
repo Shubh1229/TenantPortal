@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, ChevronRight, User2 } from 'lucide-react';
+import { ArrowLeft, ChevronRight, Pencil, RotateCcw, Trash2, User2 } from 'lucide-react';
 
 type View =
     | 'list'
@@ -42,6 +42,11 @@ export default function PropertiesPage() {
     // Profiles, rent schedules, and transactions loaded on demand for detail views
     const [unitProfiles, setUnitProfiles] = useState<Record<string, PublicUserProfile>>({});
     const [unitRentSchedule, setUnitRentSchedule] = useState<RentSchedule | null | undefined>(undefined);
+    const [unitDeletedRentSchedules, setUnitDeletedRentSchedules] = useState<RentSchedule[]>([]);
+    const [unitRsEditing, setUnitRsEditing] = useState(false);
+    const [unitRsAmount, setUnitRsAmount] = useState('');
+    const [unitRsDueDay, setUnitRsDueDay] = useState('');
+    const [unitRsEndDate, setUnitRsEndDate] = useState('');
     const [unitTransactions, setUnitTransactions] = useState<Transaction[]>([]);
     const [tenantProfile, setTenantProfile] = useState<PublicUserProfile | null>(null);
     const [tenantUnits, setTenantUnits] = useState<Unit[]>([]);
@@ -94,13 +99,15 @@ export default function PropertiesPage() {
     async function openUnitDetail(u: Unit) {
         setSelectedUnit(u);
         setUnitRentSchedule(undefined);
+        setUnitDeletedRentSchedules([]);
+        setUnitRsEditing(false);
         setUnitProfiles({});
         setUnitTransactions([]);
         setView('unitDetail');
         setMsg('');
 
-        // Load public profiles, rent schedule, and transactions in parallel
-        const [profileMap, schedule, allTxns] = await Promise.all([
+        // Load public profiles, rent schedule, deleted schedules, and transactions in parallel
+        const [profileMap, schedule, deletedSchedules, allTxns] = await Promise.all([
             Promise.all(
                 u.currentTenantIds.map(id =>
                     authApi.getPublicProfile(id)
@@ -113,11 +120,13 @@ export default function PropertiesPage() {
                 return map;
             }),
             transactionsApi.getUnitRentSchedule(u.id).catch(() => null),
+            transactionsApi.getDeletedRentSchedules().catch(() => [] as RentSchedule[]),
             transactionsApi.getAll().catch(() => [] as Transaction[]),
         ]);
 
         setUnitProfiles(profileMap);
         setUnitRentSchedule(schedule);
+        setUnitDeletedRentSchedules(deletedSchedules.filter(s => s.unitId === u.id));
         setUnitTransactions(
             allTxns
                 .filter(t => t.unitId === u.id)
@@ -145,6 +154,49 @@ export default function PropertiesPage() {
                 .filter(t => t.tenantId === tenantId)
                 .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
         );
+    }
+
+    // ── Unit detail rent schedule ──────────────────────────────────────────────────
+
+    async function handleUpdateUnitRentSchedule(e: React.FormEvent) {
+        e.preventDefault(); setMsg('');
+        if (!unitRentSchedule || !selectedUnit) return;
+        try {
+            await transactionsApi.updateRentSchedule(unitRentSchedule.id, {
+                monthlyAmount: parseFloat(unitRsAmount),
+                dueDayOfMonth: parseInt(unitRsDueDay),
+                endDate: unitRsEndDate || undefined,
+            });
+            setUnitRsEditing(false);
+            setSuccess('Rent schedule updated.');
+            const updated = await transactionsApi.getUnitRentSchedule(selectedUnit.id).catch(() => null);
+            setUnitRentSchedule(updated);
+        } catch (err) { setError(extractError(err, 'Failed to update rent schedule.')); }
+    }
+
+    async function handleArchiveUnitRentSchedule() {
+        if (!unitRentSchedule || !selectedUnit || !confirm('Archive this rent schedule?')) return;
+        try {
+            await transactionsApi.deleteRentSchedule(unitRentSchedule.id);
+            setUnitRentSchedule(null);
+            const deleted = await transactionsApi.getDeletedRentSchedules().catch(() => [] as RentSchedule[]);
+            setUnitDeletedRentSchedules(deleted.filter(s => s.unitId === selectedUnit.id));
+            setSuccess('Rent schedule archived.');
+        } catch (err) { setError(extractError(err, 'Failed to archive rent schedule.')); }
+    }
+
+    async function handleRestoreUnitRentSchedule(id: string) {
+        if (!selectedUnit) return;
+        try {
+            await transactionsApi.restoreRentSchedule(id);
+            const [schedule, deleted] = await Promise.all([
+                transactionsApi.getUnitRentSchedule(selectedUnit.id).catch(() => null),
+                transactionsApi.getDeletedRentSchedules().catch(() => [] as RentSchedule[]),
+            ]);
+            setUnitRentSchedule(schedule);
+            setUnitDeletedRentSchedules(deleted.filter(s => s.unitId === selectedUnit.id));
+            setSuccess('Rent schedule restored.');
+        } catch (err) { setError(extractError(err, 'Failed to restore rent schedule.')); }
     }
 
     // ── Properties ─────────────────────────────────────────────────────────────────
@@ -412,8 +464,35 @@ export default function PropertiesPage() {
 
                 {/* Rent schedule */}
                 <Card className="bg-zinc-900 border-zinc-800">
-                    <CardHeader><CardTitle className="text-base">Rent Schedule</CardTitle></CardHeader>
-                    <CardContent>
+                    <CardHeader className="pb-2">
+                        <div className="flex items-center justify-between">
+                            <CardTitle className="text-base">Rent Schedule</CardTitle>
+                            {unitRentSchedule && !unitRsEditing && (
+                                <div className="flex gap-1">
+                                    <button
+                                        onClick={() => {
+                                            setUnitRsAmount(unitRentSchedule.monthlyAmount.toString());
+                                            setUnitRsDueDay(unitRentSchedule.dueDayOfMonth.toString());
+                                            setUnitRsEndDate(unitRentSchedule.endDate ? unitRentSchedule.endDate.substring(0, 10) : '');
+                                            setUnitRsEditing(true);
+                                        }}
+                                        className="p-1.5 rounded hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 transition-colors"
+                                        title="Edit schedule"
+                                    >
+                                        <Pencil size={13} />
+                                    </button>
+                                    <button
+                                        onClick={handleArchiveUnitRentSchedule}
+                                        className="p-1.5 rounded hover:bg-zinc-800 text-zinc-400 hover:text-red-400 transition-colors"
+                                        title="Archive schedule"
+                                    >
+                                        <Trash2 size={13} />
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
                         {unitRentSchedule === undefined ? (
                             <p className="text-sm text-zinc-500">Loading…</p>
                         ) : unitRentSchedule === null ? (
@@ -421,6 +500,33 @@ export default function PropertiesPage() {
                                 No shared schedule found for this unit.{' '}
                                 {selectedUnit.billingMode === 'PerTenant' && 'Per-tenant schedules are managed on the Rent Schedule page.'}
                             </p>
+                        ) : unitRsEditing ? (
+                            <form onSubmit={handleUpdateUnitRentSchedule} className="space-y-3">
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div className="space-y-1">
+                                        <Label className="text-zinc-400 text-xs">Monthly Amount ($)</Label>
+                                        <Input type="number" min="0" step="0.01" value={unitRsAmount}
+                                            onChange={e => setUnitRsAmount(e.target.value)} required
+                                            className="bg-zinc-900 border-zinc-700 text-zinc-100 h-8 text-sm" />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <Label className="text-zinc-400 text-xs">Due Day</Label>
+                                        <Input type="number" min="1" max="28" value={unitRsDueDay}
+                                            onChange={e => setUnitRsDueDay(e.target.value)} required
+                                            className="bg-zinc-900 border-zinc-700 text-zinc-100 h-8 text-sm" />
+                                    </div>
+                                    <div className="space-y-1 col-span-2">
+                                        <Label className="text-zinc-400 text-xs">End Date (optional)</Label>
+                                        <Input type="date" value={unitRsEndDate}
+                                            onChange={e => setUnitRsEndDate(e.target.value)}
+                                            className="bg-zinc-900 border-zinc-700 text-zinc-100 h-8 text-sm" />
+                                    </div>
+                                </div>
+                                <div className="flex gap-2">
+                                    <Button type="submit" size="sm">Save</Button>
+                                    <Button type="button" size="sm" variant="outline" onClick={() => setUnitRsEditing(false)}>Cancel</Button>
+                                </div>
+                            </form>
                         ) : (
                             <div className="space-y-1 text-sm">
                                 <div className="flex justify-between">
@@ -436,6 +542,38 @@ export default function PropertiesPage() {
                                 <div className="flex justify-between">
                                     <span className="text-zinc-400">Start date</span>
                                     <span className="text-zinc-200">{new Date(unitRentSchedule.startDate).toLocaleDateString()}</span>
+                                </div>
+                                {unitRentSchedule.endDate && (
+                                    <div className="flex justify-between">
+                                        <span className="text-zinc-400">End date</span>
+                                        <span className="text-zinc-200">{new Date(unitRentSchedule.endDate).toLocaleDateString()}</span>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {unitDeletedRentSchedules.length > 0 && (
+                            <div className="pt-3 border-t border-zinc-800">
+                                <p className="text-xs text-zinc-500 mb-2 uppercase tracking-wide">Archived ({unitDeletedRentSchedules.length})</p>
+                                <div className="space-y-2">
+                                    {unitDeletedRentSchedules.map(s => (
+                                        <div key={s.id} className="flex items-center justify-between py-1">
+                                            <div>
+                                                <span className="text-sm text-zinc-500">${s.monthlyAmount.toLocaleString()}/mo</span>
+                                                <span className="text-xs text-zinc-600 ml-2">
+                                                    from {new Date(s.startDate).toLocaleDateString()}
+                                                    {s.deletedAt ? ` · archived ${new Date(s.deletedAt).toLocaleDateString()}` : ''}
+                                                </span>
+                                            </div>
+                                            <button
+                                                onClick={() => handleRestoreUnitRentSchedule(s.id)}
+                                                className="p-1.5 rounded hover:bg-zinc-800 text-zinc-500 hover:text-emerald-400 transition-colors"
+                                                title="Restore"
+                                            >
+                                                <RotateCcw size={13} />
+                                            </button>
+                                        </div>
+                                    ))}
                                 </div>
                             </div>
                         )}

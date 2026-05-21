@@ -2,12 +2,28 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { authApi } from '@/lib/api/auth';
 import { transactionsApi } from '@/lib/api/transactions';
 import { notificationsApi } from '@/lib/api/notifications';
-import { Transaction, Notification } from '@/types';
+import { Transaction, Notification, UnitPropertyInfo, PublicUserProfile, RentSchedule } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { CalendarClock, Clock, AlertTriangle, CreditCard } from 'lucide-react';
+import { AlertTriangle, Building2, CalendarClock, Clock, CreditCard, Home, User2 } from 'lucide-react';
+
+function HomeInfoRow({ label, value }: { label: string; value: string }) {
+    return (
+        <div className="flex justify-between gap-2">
+            <span className="text-zinc-500 shrink-0">{label}</span>
+            <span className="text-zinc-200 text-right">{value}</span>
+        </div>
+    );
+}
+
+function ordinalSuffix(n: number): string {
+    const s = ['th', 'st', 'nd', 'rd'];
+    const v = n % 100;
+    return s[(v - 20) % 10] ?? s[v] ?? s[0];
+}
 
 const STATUS_STYLES: Record<string, string> = {
     Confirmed: 'bg-emerald-500/10 text-emerald-400 ring-1 ring-emerald-500/20',
@@ -59,16 +75,31 @@ function StatCard({ title, value, sub, icon, accent, href }: StatCardProps) {
 export default function TenantDashboard() {
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [notifications, setNotifications] = useState<Notification[]>([]);
+    const [unitInfo, setUnitInfo] = useState<UnitPropertyInfo | null>(null);
+    const [adminProfile, setAdminProfile] = useState<PublicUserProfile | null>(null);
+    const [rentSchedule, setRentSchedule] = useState<RentSchedule | null>(null);
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
-        Promise.all([transactionsApi.getAll(), notificationsApi.getAll()])
-            .then(([txns, notifs]) => {
+        async function loadAll() {
+            try {
+                const [txns, notifs, info, schedule] = await Promise.all([
+                    transactionsApi.getAll(),
+                    notificationsApi.getAll(),
+                    transactionsApi.getMyUnitInfo().catch(() => null),
+                    transactionsApi.getMyRentSchedule().catch(() => null),
+                ]);
                 setTransactions(txns);
                 setNotifications(notifs.filter(n => !n.isRead).slice(0, 5));
-            })
-            .catch(console.error)
-            .finally(() => setIsLoading(false));
+                setUnitInfo(info);
+                setRentSchedule(schedule);
+                if (info?.adminId) {
+                    authApi.getPublicProfile(info.adminId).then(setAdminProfile).catch(() => null);
+                }
+            } catch (e) { console.error(e); }
+            finally { setIsLoading(false); }
+        }
+        loadAll();
     }, []);
 
     const nextDue = transactions
@@ -122,6 +153,68 @@ export default function TenantDashboard() {
                     href="/tenant/payment"
                 />
             </div>
+
+            {/* My Home */}
+            {(unitInfo || rentSchedule) && (
+                <Card className="bg-zinc-900 border-zinc-800">
+                    <CardHeader className="pb-2">
+                        <CardTitle className="text-base text-white flex items-center gap-2">
+                            <Home size={15} className="text-indigo-400" />
+                            My Home
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-5">
+                        {unitInfo && (
+                            <div className="space-y-2">
+                                <p className="text-[11px] uppercase tracking-wider text-zinc-500 font-medium flex items-center gap-1.5">
+                                    <Building2 size={11} /> Property &amp; Unit
+                                </p>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5 text-sm">
+                                    <HomeInfoRow label="Property" value={unitInfo.propertyName} />
+                                    <HomeInfoRow label="Address" value={unitInfo.propertyAddress} />
+                                    <HomeInfoRow label="Unit" value={`Unit ${unitInfo.unitNumber}`} />
+                                    {unitInfo.bedrooms != null && <HomeInfoRow label="Bedrooms" value={String(unitInfo.bedrooms)} />}
+                                    {unitInfo.bathrooms != null && <HomeInfoRow label="Bathrooms" value={String(unitInfo.bathrooms)} />}
+                                    {unitInfo.squareFeet != null && <HomeInfoRow label="Sq Ft" value={unitInfo.squareFeet.toLocaleString()} />}
+                                </div>
+                            </div>
+                        )}
+
+                        {rentSchedule && (
+                            <div className="space-y-2">
+                                <p className="text-[11px] uppercase tracking-wider text-zinc-500 font-medium flex items-center gap-1.5">
+                                    <CalendarClock size={11} /> Rent Schedule
+                                </p>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5 text-sm">
+                                    <HomeInfoRow label="Monthly Rent" value={`$${rentSchedule.monthlyAmount.toLocaleString()}`} />
+                                    <HomeInfoRow label="Due Day" value={`${rentSchedule.dueDayOfMonth}${ordinalSuffix(rentSchedule.dueDayOfMonth)} of each month`} />
+                                    <HomeInfoRow label="Start Date" value={new Date(rentSchedule.startDate).toLocaleDateString()} />
+                                    {rentSchedule.endDate && (
+                                        <HomeInfoRow label="End Date" value={new Date(rentSchedule.endDate).toLocaleDateString()} />
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        {adminProfile && (
+                            <div className="space-y-2">
+                                <p className="text-[11px] uppercase tracking-wider text-zinc-500 font-medium flex items-center gap-1.5">
+                                    <User2 size={11} /> Property Manager
+                                </p>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5 text-sm">
+                                    {(adminProfile.firstName || adminProfile.lastName) && (
+                                        <HomeInfoRow label="Name" value={[adminProfile.firstName, adminProfile.lastName].filter(Boolean).join(' ')} />
+                                    )}
+                                    <HomeInfoRow label="Email" value={adminProfile.email} />
+                                    {adminProfile.phoneNumber && (
+                                        <HomeInfoRow label="Phone" value={adminProfile.phoneNumber} />
+                                    )}
+                                </div>
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
+            )}
 
             {/* Recent transactions */}
             <Card className="bg-zinc-900 border-zinc-800">
