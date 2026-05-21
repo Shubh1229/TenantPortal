@@ -43,5 +43,12 @@ namespace TenantPortal.Shared.Constants
 
         /// <summary>Base64-encoded 32-byte AES-256 key used to encrypt TOTP secrets at rest.</summary>
         public const string TotpEncryptionKey = "Totp__EncryptionKey";
+
+        /// <summary>
+        /// Stripe webhook signing secret for the Connect account webhook endpoint.
+        /// Separate from <see cref="StripeSubscriptionWebhookSecret"/> — registered in the
+        /// Stripe dashboard to listen for <c>account.updated</c> Connect events.
+        /// </summary>
+        public const string StripeConnectWebhookSecret = "Stripe__ConnectWebhookSecret";
     }
 }

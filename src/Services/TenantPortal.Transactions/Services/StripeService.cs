@@ -1,5 +1,7 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using System.Net.Http.Json;
+using System.Text.Json;
 using TenantPortal.Shared.Interfaces;
 using TenantPortal.Transactions.Data;
 using TenantPortal.Transactions.DTOs;
@@ -40,6 +42,22 @@ namespace TenantPortal.Transactions.Services
                 if (schedule == null)
                     return null;
 
+                // Resolve admin's Stripe connected account so funds transfer to their bank
+                var unit = await _context.Units.FirstOrDefaultAsync(u => u.Id == schedule.UnitId);
+                var property = unit != null
+                    ? await _context.Properties.FirstOrDefaultAsync(p => p.Id == unit.PropertyId)
+                    : null;
+
+                string? connectedAccountId = null;
+                if (property?.AdminId != null)
+                    connectedAccountId = await GetAdminConnectedAccountIdAsync(property.AdminId.Value);
+
+                if (connectedAccountId == null)
+                {
+                    _logger.LogWarning("Payment intent creation blocked — admin has not completed Stripe Connect onboarding. AdminId: {AdminId}", property?.AdminId);
+                    return null;
+                }
+
                 var stripeKey = await _secretsProvider.GetSecretAsync(SecretKeys.StripeSecretKey);
                 StripeConfiguration.ApiKey = stripeKey;
 
@@ -52,6 +70,10 @@ namespace TenantPortal.Transactions.Services
                     PaymentMethodTypes = isAch
                         ? new List<string> { "us_bank_account" }
                         : new List<string> { "card" },
+                    TransferData = new PaymentIntentTransferDataOptions
+                    {
+                        Destination = connectedAccountId,
+                    },
                     Metadata = new Dictionary<string, string>
                     {
                         { "UserId", userId.ToString() },
@@ -95,8 +117,27 @@ namespace TenantPortal.Transactions.Services
 
                 return intent.ClientSecret;
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                _logger.LogError(ex, "Failed to create PaymentIntent for user {UserId}.", userId);
+                return null;
+            }
+        }
+
+        private async Task<string?> GetAdminConnectedAccountIdAsync(Guid adminId)
+        {
+            try
+            {
+                var authUrl = _configuration["Auth:HttpUrl"] ?? "http://localhost:5001";
+                var client = _httpClientFactory.CreateClient();
+                var response = await client.GetAsync($"{authUrl}/api/auth/internal/connected-account/{adminId}");
+                if (!response.IsSuccessStatusCode) return null;
+                var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+                return body.GetProperty("connectedAccountId").GetString();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to fetch connected account ID for admin {AdminId}.", adminId);
                 return null;
             }
         }

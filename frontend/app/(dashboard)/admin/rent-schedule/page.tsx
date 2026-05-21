@@ -312,8 +312,71 @@ export default function RentSchedulePage() {
         <div className="space-y-6">
             <h2 className="text-2xl font-semibold">Rent Schedules</h2>
 
+            {/* Create form */}
+            <Card className="bg-zinc-900 border-zinc-800">
+                <CardHeader><CardTitle className="text-base">Create Rent Schedule</CardTitle></CardHeader>
+                <CardContent>
+                    <form onSubmit={handleSubmit} className="space-y-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="space-y-2 md:col-span-2">
+                                <Label htmlFor="unitId" className="text-zinc-300">Unit</Label>
+                                <select id="unitId" value={unitId} onChange={e => { setUnitId(e.target.value); setTenantId(''); }} required className={selectClass}>
+                                    <option value="">Select a unit…</option>
+                                    {units.map(u => (
+                                        <option key={u.id} value={u.id}>Unit {u.unitNumber} — {u.billingMode === 'SharedUnit' ? 'Shared billing' : 'Per-tenant billing'}</option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            {selectedUnit && !isSharedUnit && (
+                                <div className="space-y-2 md:col-span-2">
+                                    <Label htmlFor="tenantId" className="text-zinc-300">Tenant</Label>
+                                    <select id="tenantId" value={tenantId} onChange={e => setTenantId(e.target.value)} required className={selectClass}>
+                                        <option value="">Select a tenant…</option>
+                                        {(unitTenants.length > 0 ? unitTenants : tenants.filter(t => t.isActive)).map(t => (
+                                            <option key={t.id} value={t.id}>{t.email}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            )}
+
+                            {selectedUnit && isSharedUnit && (
+                                <div className="md:col-span-2 rounded-lg bg-zinc-800/50 border border-zinc-700 px-4 py-3 text-sm text-zinc-400">
+                                    This unit uses <strong className="text-zinc-300">shared billing</strong> — one schedule applies to all tenants on the unit.
+                                </div>
+                            )}
+
+                            <div className="space-y-2">
+                                <Label className="text-zinc-300">Monthly Rent Amount ($)</Label>
+                                <Input type="number" min="0" step="0.01" value={monthlyAmount} onChange={e => setMonthlyAmount(e.target.value)} placeholder="1850.00" required className="bg-zinc-900 border-zinc-700 text-zinc-100" />
+                            </div>
+                            <div className="space-y-2">
+                                <Label className="text-zinc-300">Rent Due Day of Month</Label>
+                                <Input type="number" min="1" max="28" value={dueDayOfMonth} onChange={e => setDueDayOfMonth(e.target.value)} required className="bg-zinc-900 border-zinc-700 text-zinc-100" />
+                                <p className="text-xs text-zinc-500">Max 28 to avoid month-end issues.</p>
+                            </div>
+                            <div className="space-y-2">
+                                <Label className="text-zinc-300">Start Date</Label>
+                                <Input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} required className="bg-zinc-900 border-zinc-700 text-zinc-100" />
+                            </div>
+                            <div className="space-y-2">
+                                <Label className="text-zinc-300">End Date <span className="text-zinc-500 font-normal">(optional, defaults to 1 year)</span></Label>
+                                <Input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="bg-zinc-900 border-zinc-700 text-zinc-100" />
+                            </div>
+                        </div>
+
+                        {createStatus === 'error' && <p className="text-sm text-red-400">{createError}</p>}
+                        {createStatus === 'success' && <p className="text-sm text-emerald-400">Rent schedule created.</p>}
+
+                        <Button type="submit" disabled={createStatus === 'loading'} className="bg-indigo-600 hover:bg-indigo-500 text-white">
+                            {createStatus === 'loading' ? 'Creating...' : 'Create Rent Schedule'}
+                        </Button>
+                    </form>
+                </CardContent>
+            </Card>
+
             {/* Active schedules */}
-            {schedules.length > 0 && (
+            {schedules.length > 0 ? (
                 <Card className="bg-zinc-900 border-zinc-800">
                     <CardHeader><CardTitle className="text-base">Active Schedules</CardTitle></CardHeader>
                     <CardContent>
@@ -381,15 +444,13 @@ export default function RentSchedulePage() {
                         </div>
                     </CardContent>
                 </Card>
-            )}
-
-            {schedules.length === 0 && (
+            ) : (
                 <Card className="bg-zinc-900 border-zinc-800">
                     <CardContent className="py-8 text-center text-zinc-500 text-sm">No active rent schedules.</CardContent>
                 </Card>
             )}
 
-            {/* Deleted schedules */}
+            {/* Archived schedules */}
             {deletedSchedules.length > 0 && (
                 <Card className="bg-zinc-900 border-zinc-800">
                     <CardHeader>
@@ -424,69 +485,6 @@ export default function RentSchedulePage() {
                     )}
                 </Card>
             )}
-
-            {/* Create form */}
-            <Card className="bg-zinc-900 border-zinc-800">
-                <CardHeader><CardTitle className="text-base">Create Rent Schedule</CardTitle></CardHeader>
-                <CardContent>
-                    <form onSubmit={handleSubmit} className="space-y-4">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div className="space-y-2 md:col-span-2">
-                                <Label htmlFor="unitId" className="text-zinc-300">Unit</Label>
-                                <select id="unitId" value={unitId} onChange={e => { setUnitId(e.target.value); setTenantId(''); }} required className={selectClass}>
-                                    <option value="">Select a unit…</option>
-                                    {units.map(u => (
-                                        <option key={u.id} value={u.id}>Unit {u.unitNumber} — {u.billingMode === 'SharedUnit' ? 'Shared billing' : 'Per-tenant billing'}</option>
-                                    ))}
-                                </select>
-                            </div>
-
-                            {selectedUnit && !isSharedUnit && (
-                                <div className="space-y-2 md:col-span-2">
-                                    <Label htmlFor="tenantId" className="text-zinc-300">Tenant</Label>
-                                    <select id="tenantId" value={tenantId} onChange={e => setTenantId(e.target.value)} required className={selectClass}>
-                                        <option value="">Select a tenant…</option>
-                                        {(unitTenants.length > 0 ? unitTenants : tenants.filter(t => t.isActive)).map(t => (
-                                            <option key={t.id} value={t.id}>{t.email}</option>
-                                        ))}
-                                    </select>
-                                </div>
-                            )}
-
-                            {selectedUnit && isSharedUnit && (
-                                <div className="md:col-span-2 rounded-lg bg-zinc-800/50 border border-zinc-700 px-4 py-3 text-sm text-zinc-400">
-                                    This unit uses <strong className="text-zinc-300">shared billing</strong> — one schedule applies to all tenants on the unit.
-                                </div>
-                            )}
-
-                            <div className="space-y-2">
-                                <Label className="text-zinc-300">Monthly Rent Amount ($)</Label>
-                                <Input type="number" min="0" step="0.01" value={monthlyAmount} onChange={e => setMonthlyAmount(e.target.value)} placeholder="1850.00" required className="bg-zinc-900 border-zinc-700 text-zinc-100" />
-                            </div>
-                            <div className="space-y-2">
-                                <Label className="text-zinc-300">Rent Due Day of Month</Label>
-                                <Input type="number" min="1" max="28" value={dueDayOfMonth} onChange={e => setDueDayOfMonth(e.target.value)} required className="bg-zinc-900 border-zinc-700 text-zinc-100" />
-                                <p className="text-xs text-zinc-500">Max 28 to avoid month-end issues.</p>
-                            </div>
-                            <div className="space-y-2">
-                                <Label className="text-zinc-300">Start Date</Label>
-                                <Input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} required className="bg-zinc-900 border-zinc-700 text-zinc-100" />
-                            </div>
-                            <div className="space-y-2">
-                                <Label className="text-zinc-300">End Date <span className="text-zinc-500 font-normal">(optional, defaults to 1 year)</span></Label>
-                                <Input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="bg-zinc-900 border-zinc-700 text-zinc-100" />
-                            </div>
-                        </div>
-
-                        {createStatus === 'error' && <p className="text-sm text-red-400">{createError}</p>}
-                        {createStatus === 'success' && <p className="text-sm text-emerald-400">Rent schedule created.</p>}
-
-                        <Button type="submit" disabled={createStatus === 'loading'} className="bg-indigo-600 hover:bg-indigo-500 text-white">
-                            {createStatus === 'loading' ? 'Creating...' : 'Create Rent Schedule'}
-                        </Button>
-                    </form>
-                </CardContent>
-            </Card>
         </div>
     );
 }

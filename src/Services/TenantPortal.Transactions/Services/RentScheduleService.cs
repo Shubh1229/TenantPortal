@@ -68,7 +68,7 @@ namespace TenantPortal.Transactions.Services
 
         public async Task<RentSchedule?> GetRentScheduleAsync(Guid tenantId)
         {
-            return await _context.RentSchedules.FirstOrDefaultAsync(s => s.TenantId == tenantId);
+            return await _context.RentSchedules.FirstOrDefaultAsync(s => s.TenantId == tenantId && !s.IsDeleted);
         }
 
         /// <summary>
@@ -95,7 +95,10 @@ namespace TenantPortal.Transactions.Services
         {
             var query = _context.RentSchedules.Where(r => !r.IsDeleted);
             if (role == UserRole.Admin)
-                query = query.Where(r => r.CreatedBy == userId);
+            {
+                var adminUnitIds = AdminUnitIds(userId);
+                query = query.Where(r => adminUnitIds.Contains(r.UnitId));
+            }
             return await query.ToListAsync();
         }
 
@@ -103,8 +106,22 @@ namespace TenantPortal.Transactions.Services
         {
             var query = _context.RentSchedules.Where(r => r.IsDeleted);
             if (role == UserRole.Admin)
-                query = query.Where(r => r.CreatedBy == userId);
+            {
+                var adminUnitIds = AdminUnitIds(userId);
+                query = query.Where(r => adminUnitIds.Contains(r.UnitId));
+            }
             return await query.ToListAsync();
+        }
+
+        // Returns an IQueryable of unit IDs belonging to properties owned by the given admin.
+        private IQueryable<Guid> AdminUnitIds(Guid adminId)
+        {
+            var propertyIds = _context.Properties
+                .Where(p => p.AdminId == adminId && !p.IsDeleted)
+                .Select(p => p.Id);
+            return _context.Units
+                .Where(u => propertyIds.Contains(u.PropertyId) && !u.IsDeleted)
+                .Select(u => u.Id);
         }
 
         public async Task<bool> RestoreRentScheduleAsync(Guid id, Guid userId, UserRole role)

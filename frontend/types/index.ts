@@ -181,6 +181,13 @@ export interface Unit {
   currentTenantIds: string[];
 }
 
+export interface ConnectStatus {
+  isConnected: boolean;
+  chargesEnabled: boolean;
+  payoutsEnabled: boolean;
+  dashboardUrl?: string;
+}
+
 export interface ApiError {
   message: string;
   status: number;

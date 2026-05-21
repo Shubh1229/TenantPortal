@@ -1,5 +1,5 @@
 import { apiRequest } from './client';
-import { AdminRegisterResponse, LoginRequest, LoginResponse, TotpValidationRequest, UserProfile } from '@/types';
+import { AdminRegisterResponse, ConnectStatus, LoginRequest, LoginResponse, TotpValidationRequest, UserProfile } from '@/types';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
@@ -125,5 +125,16 @@ export const authApi = {
         apiRequest<{ success: boolean }>('/api/auth/account', {
             method: 'DELETE',
             body: { confirmEmail },
+        }),
+
+    // ── Stripe Connect ────────────────────────────────────────────────────────────
+
+    getConnectStatus: () =>
+        apiRequest<ConnectStatus>('/api/auth/connect/status'),
+
+    getConnectOnboardingUrl: (returnUrl: string, refreshUrl: string) =>
+        apiRequest<{ onboardingUrl: string }>('/api/auth/connect/onboard', {
+            method: 'POST',
+            body: { returnUrl, refreshUrl },
         }),
 };

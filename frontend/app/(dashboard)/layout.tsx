@@ -18,6 +18,7 @@ import {
     Settings,
     User,
     ArrowLeftRight,
+    Landmark,
 } from 'lucide-react';
 
 interface NavItem {
@@ -42,6 +43,7 @@ function roleNavItems(role: string | null): NavItem[] {
             { href: '/admin/transactions', label: 'Transactions', icon: <ArrowLeftRight size={18} /> },
             { href: '/admin/contracts', label: 'Contracts', icon: <FileText size={18} /> },
             { href: '/admin/rent-schedule', label: 'Rent Schedule', icon: <Calendar size={18} /> },
+            { href: '/admin/payouts', label: 'Payouts', icon: <Landmark size={18} /> },
             { href: '/profile', label: 'Profile', icon: <User size={18} /> },
             { href: '/settings', label: 'Settings', icon: <Settings size={18} /> },
         ];

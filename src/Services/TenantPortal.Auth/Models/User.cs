@@ -95,6 +95,22 @@ namespace TenantPortal.Auth.Models
         /// </summary>
         public int? MaxTenants { get; set; }
 
+        // ── Stripe Connect Fields (Admin role only) ───────────────────────────────────
+
+        /// <summary>
+        /// Stripe Express connected account ID.
+        /// Set when the admin initiates bank-account onboarding via Stripe Connect.
+        /// <c>null</c> until onboarding begins.
+        /// </summary>
+        public string? StripeConnectedAccountId { get; set; }
+
+        /// <summary>
+        /// Cached value of <c>charges_enabled</c> from Stripe — updated by the
+        /// <c>account.updated</c> Connect webhook. True once the admin has completed
+        /// onboarding and can receive tenant payments.
+        /// </summary>
+        public bool StripeConnectChargesEnabled { get; set; } = false;
+
         // ── Hierarchy is tracked relationally, not as denormalised lists ─────────────
         //
         // "Who did this user invite?"   → query Users WHERE InvitedBy = this.Id
