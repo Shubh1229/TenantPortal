@@ -124,8 +124,22 @@ namespace TenantPortal.Auth.Services
         public async Task<string?> GetConnectedAccountIdAsync(Guid adminId)
         {
             var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == adminId && !u.IsDeleted);
-            if (user?.StripeConnectedAccountId == null || !user.StripeConnectChargesEnabled)
+            if (user?.StripeConnectedAccountId == null)
                 return null;
+
+            if (!user.StripeConnectChargesEnabled)
+            {
+                // DB flag may be stale if the Connect webhook hasn't fired yet — check Stripe directly
+                await ConfigureStripeAsync();
+                var account = await new AccountService().GetAsync(user.StripeConnectedAccountId);
+                if (!account.ChargesEnabled)
+                    return null;
+
+                user.StripeConnectChargesEnabled = true;
+                user.UpdatedAt = DateTime.UtcNow;
+                await _context.SaveChangesAsync();
+            }
+
             return user.StripeConnectedAccountId;
         }
 

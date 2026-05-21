@@ -98,6 +98,12 @@ namespace TenantPortal.Auth.Migrations
                         .HasMaxLength(512)
                         .HasColumnType("character varying(512)");
 
+                    b.Property<DateTime?>("PasswordResetTokenExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("PasswordResetTokenHash")
+                        .HasColumnType("text");
+
                     b.Property<DateTime?>("RefreshTokenExpiresAt")
                         .HasColumnType("timestamp with time zone");
 

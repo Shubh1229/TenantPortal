@@ -142,6 +142,29 @@ namespace TenantPortal.Auth.Controllers
             return Ok(new { accessToken = newToken });
         }
 
+        /// <summary>
+        /// Sends a password-reset email if the address matches a known active account.
+        /// Always returns 200 to prevent user enumeration.
+        /// </summary>
+        [HttpPost("forgot-password")]
+        public async Task<IActionResult> ForgotPasswordAsync([FromBody] ForgotPasswordRequestDTO request)
+        {
+            await _authService.ForgotPasswordAsync(request.Email, request.FrontendBaseUrl);
+            return Ok();
+        }
+
+        /// <summary>
+        /// Validates a password-reset token and sets a new password.
+        /// The token is single-use and expires after 1 hour.
+        /// </summary>
+        [HttpPost("reset-password")]
+        public async Task<IActionResult> ResetPasswordAsync([FromBody] ResetPasswordRequestDTO request)
+        {
+            var error = await _authService.ResetPasswordAsync(request.Token, request.NewPassword);
+            if (error != null) return BadRequest(new { error });
+            return Ok();
+        }
+
         /// <summary>Returns public profile info for any user by ID. Any authenticated user may call this to look up admins or co-tenants.</summary>
         [Authorize(Policy = AppConstants.Policies.RequireTenant)]
         [HttpGet("users/{id}/public-profile")]

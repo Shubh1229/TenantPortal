@@ -127,6 +127,22 @@ export const authApi = {
             body: { confirmEmail },
         }),
 
+    // ── Password Reset ────────────────────────────────────────────────────────────
+
+    forgotPassword: (email: string, frontendBaseUrl: string) =>
+        apiRequest<void>('/api/auth/forgot-password', {
+            method: 'POST',
+            body: { email, frontendBaseUrl },
+            requiresAuth: false,
+        }),
+
+    resetPassword: (token: string, newPassword: string) =>
+        apiRequest<void>('/api/auth/reset-password', {
+            method: 'POST',
+            body: { token, newPassword },
+            requiresAuth: false,
+        }),
+
     // ── Stripe Connect ────────────────────────────────────────────────────────────
 
     getConnectStatus: () =>

@@ -24,6 +24,13 @@ namespace TenantPortal.Auth.Interfaces
         Task<bool> CreateInAppNotificationAsync(Guid userId, int notificationType, string message);
 
         /// <summary>
+        /// Sends a generic transactional email (e.g. password reset) via the Notifications service.
+        /// Respects the recipient's email preference except for security-critical emails — callers
+        /// should pass <c>Guid.Empty</c> as <paramref name="userId"/> to bypass the preference check.
+        /// </summary>
+        Task<bool> SendTransactionalEmailAsync(Guid userId, string toEmail, string subject, string htmlBody);
+
+        /// <summary>
         /// Probes the gRPC channel with a 3-second deadline.
         /// Returns connected=true even if the server returns a protocol-level error (e.g. invalid argument),
         /// because that still proves the channel is up. Returns false only on Unavailable or timeout.

@@ -68,6 +68,27 @@ namespace TenantPortal.Auth.Services
         }
 
         /// <inheritdoc/>
+        public async Task<bool> SendTransactionalEmailAsync(Guid userId, string toEmail, string subject, string htmlBody)
+        {
+            try
+            {
+                var result = await _client.SendTransactionalEmailAsync(new SendTransactionalEmailRequest
+                {
+                    UserId = userId.ToString(),
+                    ToEmail = toEmail,
+                    Subject = subject,
+                    HtmlBody = htmlBody
+                });
+                return result.Success;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "gRPC SendTransactionalEmail failed for {Email}", toEmail);
+                return false;
+            }
+        }
+
+        /// <inheritdoc/>
         public async Task<(bool Connected, string Detail)> PingAsync()
         {
             try

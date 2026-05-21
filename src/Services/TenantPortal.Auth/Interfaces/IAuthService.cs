@@ -108,5 +108,17 @@ namespace TenantPortal.Auth.Interfaces
         /// confirmation. Returns an error string on failure, or <c>null</c> on success.
         /// </summary>
         Task<string?> DeleteAccountAsync(Guid userId, string confirmEmail);
+
+        /// <summary>
+        /// Generates a password-reset token and sends a reset email.
+        /// Always returns true regardless of whether the email exists (prevents user enumeration).
+        /// </summary>
+        Task<bool> ForgotPasswordAsync(string email, string frontendBaseUrl);
+
+        /// <summary>
+        /// Validates the reset token and sets a new password.
+        /// Returns an error string on failure, or <c>null</c> on success.
+        /// </summary>
+        Task<string?> ResetPasswordAsync(string token, string newPassword);
     }
 }

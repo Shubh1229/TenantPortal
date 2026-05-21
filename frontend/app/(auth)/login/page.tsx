@@ -185,7 +185,17 @@ export default function LoginPage() {
                                     className="bg-zinc-900 border-zinc-700 text-white placeholder:text-zinc-600 focus:border-indigo-500"
                                 />
                             </div>
-                            {error && <p className="text-sm text-red-400">{error}</p>}
+                            {error && (
+                                <div className="space-y-1">
+                                    <p className="text-sm text-red-400">{error}</p>
+                                    <p className="text-xs text-zinc-500">
+                                        Forgot your password?{' '}
+                                        <Link href="/forgot-password" className="text-indigo-400 hover:text-indigo-300">
+                                            Reset it here
+                                        </Link>
+                                    </p>
+                                </div>
+                            )}
                             <Button
                                 type="submit"
                                 className="w-full bg-indigo-600 hover:bg-indigo-500 text-white"

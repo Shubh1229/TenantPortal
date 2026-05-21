@@ -68,6 +68,12 @@ namespace TenantPortal.Auth.Models
         /// <summary>ID of the user who sent the invitation that created this account. <c>null</c> for the Super Admin.</summary>
         public Guid? InvitedBy { get; set; }
 
+        /// <summary>SHA-256 hash of the active password-reset token. Null when no reset is pending.</summary>
+        public string? PasswordResetTokenHash { get; set; }
+
+        /// <summary>UTC expiry of the password-reset token. Null when no reset is pending.</summary>
+        public DateTime? PasswordResetTokenExpiresAt { get; set; }
+
         // ── SaaS Subscription Fields (Admin role only) ────────────────────────────
 
         /// <summary>

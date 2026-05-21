@@ -590,6 +590,60 @@ namespace TenantPortal.Auth.Services
             return null;
         }
 
+        /// <inheritdoc/>
+        public async Task<bool> ForgotPasswordAsync(string email, string frontendBaseUrl)
+        {
+            email = email.Trim().ToLowerInvariant();
+            var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == email && u.IsActive && !u.IsDeleted);
+
+            // Always return true — never leak whether the email exists
+            if (user == null) return true;
+
+            var plainToken = _jwtService.GenerateRefreshToken();
+            user.PasswordResetTokenHash = HashToken(plainToken);
+            user.PasswordResetTokenExpiresAt = DateTime.UtcNow.AddHours(1);
+            user.UpdatedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+
+            var resetUrl = $"{frontendBaseUrl}/reset-password?token={Uri.EscapeDataString(plainToken)}";
+            var subject = "Reset your Singh Resident Hub password";
+            var body = $@"
+                <h2>Password Reset Request</h2>
+                <p>We received a request to reset your password for <strong>{email}</strong>.</p>
+                <p>Click the link below to set a new password. This link expires in 1 hour.</p>
+                <p><a href=""{resetUrl}"">Reset Password</a></p>
+                <p>Or copy this URL:<br>{resetUrl}</p>
+                <p>If you did not request a password reset, you can ignore this email — your password has not changed.</p>";
+
+            // Pass Guid.Empty to bypass email preference check (security-critical email)
+            await _notificationsGrpc.SendTransactionalEmailAsync(Guid.Empty, email, subject, body);
+            return true;
+        }
+
+        /// <inheritdoc/>
+        public async Task<string?> ResetPasswordAsync(string token, string newPassword)
+        {
+            var hash = HashToken(token);
+            var user = await _context.Users.FirstOrDefaultAsync(u =>
+                u.PasswordResetTokenHash == hash &&
+                u.PasswordResetTokenExpiresAt > DateTime.UtcNow &&
+                u.IsActive &&
+                !u.IsDeleted);
+
+            if (user == null)
+                return "This reset link is invalid or has expired.";
+
+            user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(newPassword);
+            user.PasswordResetTokenHash = null;
+            user.PasswordResetTokenExpiresAt = null;
+            // Revoke refresh token so all existing sessions must re-authenticate
+            user.RefreshTokenHash = null;
+            user.RefreshTokenExpiresAt = null;
+            user.UpdatedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+            return null;
+        }
+
         /// <summary>
         /// SHA-256 hashes a token for safe storage and constant-time comparison.
         /// All token comparisons go through this method — never compare raw token strings.

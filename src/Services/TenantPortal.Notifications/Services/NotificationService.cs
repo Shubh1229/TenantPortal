@@ -134,9 +134,13 @@ namespace TenantPortal.Notifications.Services
                 var connectionString = await _secretsProvider.GetSecretAsync(SecretKeys.AzureCommunicationServices);
                 var senderAddress = await _secretsProvider.GetSecretAsync(SecretKeys.AzureEmailSenderAddress);
                 var emailClient = new EmailClient(connectionString);
-                var preference = await _context.NotificationPreferences
-                    .FirstOrDefaultAsync(p => p.UserId == userId);
-                if (preference == null || !preference.EmailEnabled) return true;
+                // Guid.Empty bypasses preference check — used for security-critical emails (e.g. password reset)
+                if (userId != Guid.Empty)
+                {
+                    var preference = await _context.NotificationPreferences
+                        .FirstOrDefaultAsync(p => p.UserId == userId);
+                    if (preference == null || !preference.EmailEnabled) return true;
+                }
                 await emailClient.SendAsync(
                     Azure.WaitUntil.Started,
                     senderAddress: senderAddress,

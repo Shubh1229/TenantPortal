@@ -4,7 +4,7 @@ namespace TenantPortal.Transactions.DTOs
     public class UpdateRentScheduleRequestDTO
     {
         /// <summary>The rent schedule to update. Populated from the route parameter by the controller.</summary>
-        public required Guid RentScheduleId { get; set; }
+        public Guid RentScheduleId { get; set; }
 
         /// <summary>New monthly rent amount, if being updated.</summary>
         public decimal? MonthlyAmount { get; set; }
