@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { authApi } from '@/lib/api/auth';
 import { transactionsApi } from '@/lib/api/transactions';
-import { BillingMode, Property, PublicUserProfile, RentSchedule, Unit, User } from '@/types';
+import { BillingMode, Property, PublicUserProfile, RentSchedule, Transaction, Unit, User } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -39,11 +39,13 @@ export default function PropertiesPage() {
     const [msg, setMsg] = useState('');
     const [msgIsError, setMsgIsError] = useState(false);
 
-    // Profiles and rent schedules loaded on demand for detail views
+    // Profiles, rent schedules, and transactions loaded on demand for detail views
     const [unitProfiles, setUnitProfiles] = useState<Record<string, PublicUserProfile>>({});
     const [unitRentSchedule, setUnitRentSchedule] = useState<RentSchedule | null | undefined>(undefined);
+    const [unitTransactions, setUnitTransactions] = useState<Transaction[]>([]);
     const [tenantProfile, setTenantProfile] = useState<PublicUserProfile | null>(null);
     const [tenantUnits, setTenantUnits] = useState<Unit[]>([]);
+    const [tenantTransactions, setTenantTransactions] = useState<Transaction[]>([]);
 
     // New / edit property
     const [propName, setPropName] = useState('');
@@ -93,27 +95,34 @@ export default function PropertiesPage() {
         setSelectedUnit(u);
         setUnitRentSchedule(undefined);
         setUnitProfiles({});
+        setUnitTransactions([]);
         setView('unitDetail');
         setMsg('');
 
-        // Load public profiles for all tenants on the unit
-        const profileMap: Record<string, PublicUserProfile> = {};
-        await Promise.all(
-            u.currentTenantIds.map(id =>
-                authApi.getPublicProfile(id)
-                    .then(p => { profileMap[id] = p; })
-                    .catch(() => {})
-            )
-        );
-        setUnitProfiles(profileMap);
+        // Load public profiles, rent schedule, and transactions in parallel
+        const [profileMap, schedule, allTxns] = await Promise.all([
+            Promise.all(
+                u.currentTenantIds.map(id =>
+                    authApi.getPublicProfile(id)
+                        .then(p => [id, p] as const)
+                        .catch(() => null)
+                )
+            ).then(entries => {
+                const map: Record<string, PublicUserProfile> = {};
+                for (const e of entries) { if (e) map[e[0]] = e[1]; }
+                return map;
+            }),
+            transactionsApi.getUnitRentSchedule(u.id).catch(() => null),
+            transactionsApi.getAll().catch(() => [] as Transaction[]),
+        ]);
 
-        // Load rent schedule(s) for this unit
-        try {
-            const schedule = await transactionsApi.getUnitRentSchedule(u.id);
-            setUnitRentSchedule(schedule);
-        } catch {
-            setUnitRentSchedule(null);
-        }
+        setUnitProfiles(profileMap);
+        setUnitRentSchedule(schedule);
+        setUnitTransactions(
+            allTxns
+                .filter(t => t.unitId === u.id)
+                .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+        );
     }
 
     // ── Tenant detail ──────────────────────────────────────────────────────────────
@@ -122,16 +131,20 @@ export default function PropertiesPage() {
         setSelectedTenantId(tenantId);
         setTenantProfile(null);
         setTenantUnits([]);
+        setTenantTransactions([]);
         setView('tenantDetail');
 
-        const [profile] = await Promise.all([
+        const [profile, allTxns] = await Promise.all([
             authApi.getPublicProfile(tenantId).catch(() => null),
+            transactionsApi.getAll().catch(() => [] as Transaction[]),
         ]);
         setTenantProfile(profile);
-
-        // Find all units this tenant is assigned to
-        const assigned = units.filter(u => u.currentTenantIds.includes(tenantId));
-        setTenantUnits(assigned);
+        setTenantUnits(units.filter(u => u.currentTenantIds.includes(tenantId)));
+        setTenantTransactions(
+            allTxns
+                .filter(t => t.tenantId === tenantId)
+                .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+        );
     }
 
     // ── Properties ─────────────────────────────────────────────────────────────────
@@ -428,6 +441,18 @@ export default function PropertiesPage() {
                         )}
                     </CardContent>
                 </Card>
+
+                {/* Transaction history */}
+                <Card className="bg-zinc-900 border-zinc-800">
+                    <CardHeader><CardTitle className="text-base">Transaction History</CardTitle></CardHeader>
+                    <CardContent>
+                        {unitTransactions.length === 0 ? (
+                            <p className="text-sm text-zinc-500">No transactions for this unit yet.</p>
+                        ) : (
+                            <TransactionTable transactions={unitTransactions} profiles={unitProfiles} />
+                        )}
+                    </CardContent>
+                </Card>
             </div>
         );
     }
@@ -496,6 +521,18 @@ export default function PropertiesPage() {
                                     );
                                 })}
                             </div>
+                        )}
+                    </CardContent>
+                </Card>
+
+                {/* Transaction history */}
+                <Card className="bg-zinc-900 border-zinc-800">
+                    <CardHeader><CardTitle className="text-base">Transaction History</CardTitle></CardHeader>
+                    <CardContent>
+                        {tenantTransactions.length === 0 ? (
+                            <p className="text-sm text-zinc-500">No transactions found for this tenant.</p>
+                        ) : (
+                            <TransactionTable transactions={tenantTransactions} profiles={tenantProfile ? { [selectedTenantId!]: tenantProfile } : {}} />
                         )}
                     </CardContent>
                 </Card>
@@ -757,6 +794,55 @@ export default function PropertiesPage() {
                     )}
                 </div>
             )}
+        </div>
+    );
+}
+
+const STATUS_COLORS: Record<string, string> = {
+    Confirmed: 'text-emerald-400',
+    Pending:   'text-amber-400',
+    Declined:  'text-red-400',
+    Overdue:   'text-orange-400',
+};
+
+const METHOD_LABELS: Record<string, string> = {
+    Stripe:   'Card',
+    Ach:      'ACH',
+    External: 'External',
+    Manual:   'Manual',
+};
+
+function TransactionTable({ transactions, profiles }: {
+    transactions: Transaction[];
+    profiles: Record<string, PublicUserProfile>;
+}) {
+    return (
+        <div className="space-y-0">
+            <div className="grid grid-cols-[1fr_90px_80px_80px] gap-2 pb-2 text-[11px] uppercase tracking-wider text-zinc-600 font-medium border-b border-zinc-800">
+                <span>Date</span>
+                <span>Amount</span>
+                <span>Method</span>
+                <span>Status</span>
+            </div>
+            {transactions.map(t => (
+                <div key={t.id} className="grid grid-cols-[1fr_90px_80px_80px] gap-2 py-2.5 border-b border-zinc-800/50 last:border-0 items-center">
+                    <div>
+                        <p className="text-sm text-zinc-200">{t.type}</p>
+                        <p className="text-xs text-zinc-500">
+                            {t.paidDate
+                                ? new Date(t.paidDate).toLocaleDateString()
+                                : new Date(t.createdAt).toLocaleDateString()}
+                        </p>
+                    </div>
+                    <span className="text-sm font-medium text-zinc-100">
+                        ${t.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    </span>
+                    <span className="text-xs text-zinc-400">{METHOD_LABELS[t.paymentMethod] ?? t.paymentMethod}</span>
+                    <span className={`text-xs font-medium ${STATUS_COLORS[t.status] ?? 'text-zinc-400'}`}>
+                        {t.status}
+                    </span>
+                </div>
+            ))}
         </div>
     );
 }

@@ -63,6 +63,7 @@ builder.Services.AddAuthorization(options =>
 builder.Services.AddDbContext<TransactionDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("Postgres")));
 
+builder.Services.AddHttpClient();
 builder.Services.AddScoped<ITransactionService, TransactionService>();
 builder.Services.AddScoped<IRentScheduleService, RentScheduleService>();
 builder.Services.AddScoped<IStripeService, StripeService>();

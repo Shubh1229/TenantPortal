@@ -30,5 +30,16 @@ namespace TenantPortal.Notifications.Controllers
             await _notificationService.SendTesterActionEmailAsync(request);
             return Ok();
         }
+
+        /// <summary>
+        /// Called by other services (e.g. Transactions on Stripe payment failure) to create
+        /// an in-app notification for a specific user without going through the Gateway.
+        /// </summary>
+        [HttpPost("api/notifications/internal/in-app")]
+        public async Task<IActionResult> CreateInAppNotificationAsync([FromBody] CreateInAppNotificationRequestDTO request)
+        {
+            await _notificationService.CreateInAppNotificationAsync(request.UserId, request.Type, request.Message);
+            return Ok();
+        }
     }
 }

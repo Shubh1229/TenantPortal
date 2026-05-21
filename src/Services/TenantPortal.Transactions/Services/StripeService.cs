@@ -1,4 +1,5 @@
 ﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using TenantPortal.Shared.Interfaces;
 using TenantPortal.Transactions.Data;
 using TenantPortal.Transactions.DTOs;
@@ -15,11 +16,21 @@ namespace TenantPortal.Transactions.Services
         private readonly TransactionDbContext _context;
         private readonly ISecretsProvider _secretsProvider;
         private readonly ILogger<StripeService> _logger;
-        public StripeService(TransactionDbContext context, ISecretsProvider secretsProvider, ILogger<StripeService> logger)
+        private readonly IHttpClientFactory _httpClientFactory;
+        private readonly IConfiguration _configuration;
+
+        public StripeService(
+            TransactionDbContext context,
+            ISecretsProvider secretsProvider,
+            ILogger<StripeService> logger,
+            IHttpClientFactory httpClientFactory,
+            IConfiguration configuration)
         {
             _context = context;
             _secretsProvider = secretsProvider;
             _logger = logger;
+            _httpClientFactory = httpClientFactory;
+            _configuration = configuration;
         }
         public async Task<string?> CreatePaymentIntentAsync(PaymentIntentRequestDTO request, Guid userId)
         {
@@ -128,6 +139,12 @@ namespace TenantPortal.Transactions.Services
                     transaction.UpdatedAt = DateTime.UtcNow;
                     await _context.SaveChangesAsync();
                     _logger.LogWarning("Transaction {TransactionId} declined — PaymentIntent {PaymentIntentId} failed. Tenant: {TenantId}.", transaction.Id, paymentIntent.Id, transaction.TenantId);
+
+                    // Look up which admin owns this unit's property, then notify them
+                    var unit = await _context.Units.FirstOrDefaultAsync(u => u.Id == transaction.UnitId);
+                    var property = unit != null ? await _context.Properties.FirstOrDefaultAsync(p => p.Id == unit.PropertyId) : null;
+                    if (property?.AdminId != null)
+                        _ = NotifyAdminPaymentFailedAsync(property.AdminId.Value, unit!.UnitNumber, transaction.Amount);
                 }
                 return true;
             }
@@ -140,6 +157,27 @@ namespace TenantPortal.Transactions.Services
             {
                 _logger.LogError(ex, "Unhandled error processing Stripe webhook.");
                 return false;
+            }
+        }
+
+        private async Task NotifyAdminPaymentFailedAsync(Guid adminId, string unitNumber, decimal amount)
+        {
+            try
+            {
+                var notificationsUrl = _configuration["Notifications:HttpUrl"] ?? "http://localhost:5004";
+                var client = _httpClientFactory.CreateClient();
+                await client.PostAsJsonAsync(
+                    $"{notificationsUrl}/api/notifications/internal/in-app",
+                    new
+                    {
+                        UserId = adminId,
+                        Type = "PaymentDeclined",
+                        Message = $"A Stripe payment for Unit {unitNumber} failed and could not be charged (${amount:F2}). The transaction has been marked as declined."
+                    });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to send admin payment-failure in-app notification.");
             }
         }
     }
