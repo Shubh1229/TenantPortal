@@ -1,4 +1,5 @@
 using TenantPortal.Auth.Models;
+using TenantPortal.Shared.Enums;
 
 namespace TenantPortal.Auth.Interfaces
 {
@@ -17,6 +18,12 @@ namespace TenantPortal.Auth.Interfaces
         /// <param name="user">The authenticated user whose claims will be embedded.</param>
         /// <returns>A signed JWT string ready to be returned to the client.</returns>
         string CreateAccessToken(User user);
+
+        /// <summary>
+        /// Creates a short-lived access token with a downgraded role for SuperAdmin role-switching.
+        /// The <c>uid</c> claim still holds the real SuperAdmin ID; <c>is_switched</c> is set to "true".
+        /// </summary>
+        string CreateSwitchedAccessToken(string superAdminId, string email, UserRole targetRole);
 
         /// <summary>
         /// Generates a cryptographically random opaque refresh token.

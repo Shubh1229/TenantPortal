@@ -1,3 +1,5 @@
+using TenantPortal.Shared.Enums;
+
 namespace TenantPortal.Transactions.Models
 {
     /// <summary>
@@ -39,5 +41,12 @@ namespace TenantPortal.Transactions.Models
 
         /// <summary>UTC timestamp of the last modification.</summary>
         public DateTime UpdatedAt { get; set; }
+
+        /// <summary>
+        /// Determines how rent is billed when multiple tenants share this unit.
+        /// <see cref="BillingMode.PerTenant"/>: each co-tenant has an independent rent schedule.
+        /// <see cref="BillingMode.SharedUnit"/>: one schedule covers the whole unit; any tenant can pay toward it.
+        /// </summary>
+        public BillingMode BillingMode { get; set; } = BillingMode.PerTenant;
     }
 }

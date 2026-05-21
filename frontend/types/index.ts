@@ -17,6 +17,8 @@ export type PaymentMethod = 'Stripe' | 'Ach' | 'External' | 'Manual';
 
 export type SubscriptionStatusValue = 'None' | 'Trialing' | 'Active' | 'PastDue' | 'Canceled';
 
+export type BillingMode = 'PerTenant' | 'SharedUnit';
+
 export type NotificationType =
   | 'PaymentConfirmed'
   | 'PaymentPending'
@@ -24,13 +26,31 @@ export type NotificationType =
   | 'PaymentOverdue'
   | 'RentReminder'
   | 'InviteCreated'
-  | 'ContractUploaded';
+  | 'ContractUploaded'
+  | 'TrialEnding';
 
 export interface User {
   id: string;
   email: string;
   role: UserRole;
   isActive: boolean;
+}
+
+export interface NotificationEmail {
+  id: string;
+  email: string;
+}
+
+export interface UserProfile {
+  email: string;
+  role: string;
+  isProfileComplete: boolean;
+  firstName?: string;
+  lastName?: string;
+  phoneNumber?: string;
+  emergencyContactName?: string;
+  emergencyContactPhone?: string;
+  notificationEmails: NotificationEmail[];
 }
 
 export interface LoginRequest {
@@ -70,6 +90,17 @@ export interface Contract {
   isCurrent: boolean;
   uploadedAt: string;
   downloadUrl: string;
+  previewUrl: string;
+}
+
+export interface PublicUserProfile {
+  id: string;
+  email: string;
+  firstName?: string;
+  lastName?: string;
+  phoneNumber?: string;
+  emergencyContactName?: string;
+  emergencyContactPhone?: string;
 }
 
 export interface Notification {
@@ -82,11 +113,27 @@ export interface Notification {
 
 export interface RentSchedule {
   id: string;
-  tenantId: string;
+  tenantId?: string;
   unitId: string;
   monthlyAmount: number;
   dueDayOfMonth: number;
   startDate: string;
+  endDate?: string;
+  isDeleted: boolean;
+  deletedAt?: string;
+}
+
+export interface UnitPropertyInfo {
+  unitId: string;
+  unitNumber: string;
+  bedrooms?: number;
+  bathrooms?: number;
+  squareFeet?: number;
+  billingMode: BillingMode;
+  propertyId: string;
+  propertyName: string;
+  propertyAddress: string;
+  adminId?: string;
 }
 
 export interface ReminderSetting {
@@ -105,6 +152,7 @@ export interface SubscriptionStatusResponse {
   isActive: boolean;
   maxTenants: number | null;
   currentTenantCount: number;
+  trialEnd: string | null;
 }
 
 export interface AdminRegisterResponse {
@@ -113,6 +161,33 @@ export interface AdminRegisterResponse {
     manualEntryKey: string;
     qrCode: string;
   };
+}
+
+export interface Property {
+  id: string;
+  name: string;
+  address: string;
+  isActive: boolean;
+  createdAt: string;
+}
+
+export interface Unit {
+  id: string;
+  propertyId: string;
+  unitNumber: string;
+  bedrooms?: number;
+  bathrooms?: number;
+  squareFeet?: number;
+  isActive: boolean;
+  billingMode: BillingMode;
+  currentTenantIds: string[];
+}
+
+export interface ConnectStatus {
+  isConnected: boolean;
+  chargesEnabled: boolean;
+  payoutsEnabled: boolean;
+  dashboardUrl?: string;
 }
 
 export interface ApiError {

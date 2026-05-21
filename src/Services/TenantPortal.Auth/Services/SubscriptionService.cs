@@ -16,6 +16,9 @@ namespace TenantPortal.Auth.Services
         private readonly AuthDbContext _context;
         private readonly ITotpService _totpService;
         private readonly ISecretsProvider _secretsProvider;
+        private readonly IHttpClientFactory _httpClientFactory;
+        private readonly IConfiguration _configuration;
+        private readonly ILogger<SubscriptionService> _logger;
 
         /// <summary>
         /// Number of active tenants included in the base $20/month plan.
@@ -26,16 +29,24 @@ namespace TenantPortal.Auth.Services
         public SubscriptionService(
             AuthDbContext context,
             ITotpService totpService,
-            ISecretsProvider secretsProvider)
+            ISecretsProvider secretsProvider,
+            IHttpClientFactory httpClientFactory,
+            IConfiguration configuration,
+            ILogger<SubscriptionService> logger)
         {
             _context = context;
             _totpService = totpService;
             _secretsProvider = secretsProvider;
+            _httpClientFactory = httpClientFactory;
+            _configuration = configuration;
+            _logger = logger;
         }
 
         /// <inheritdoc/>
         public async Task<AdminRegisterResponseDTO?> RegisterAdminAsync(AdminRegisterRequestDTO request)
         {
+            request.Email = request.Email.Trim().ToLowerInvariant();
+
             // Reject duplicate emails before touching Stripe
             if (await _context.Users.AnyAsync(u => u.Email == request.Email && !u.IsDeleted))
                 return null;
@@ -82,9 +93,23 @@ namespace TenantPortal.Auth.Services
             {
                 Customer = customer.Id,
                 Mode = "subscription",
+                PaymentMethodCollection = "if_required",
                 LineItems = new List<Stripe.Checkout.SessionLineItemOptions>
                 {
                     new Stripe.Checkout.SessionLineItemOptions { Price = priceId, Quantity = 1 }
+                },
+                SubscriptionData = new Stripe.Checkout.SessionSubscriptionDataOptions
+                {
+                    TrialPeriodDays = 7,
+                    TrialSettings = new Stripe.Checkout.SessionSubscriptionDataTrialSettingsOptions
+                    {
+                        EndBehavior = new Stripe.Checkout.SessionSubscriptionDataTrialSettingsEndBehaviorOptions
+                        {
+                            // Auto-cancel if no payment method is added by day 7;
+                            // customer.subscription.deleted webhook deactivates the account.
+                            MissingPaymentMethod = "cancel"
+                        }
+                    }
                 },
                 SuccessUrl = $"{request.ReturnBaseUrl}/subscription/success?session_id={{CHECKOUT_SESSION_ID}}",
                 CancelUrl = $"{request.ReturnBaseUrl}/register/admin?canceled=true"
@@ -134,12 +159,21 @@ namespace TenantPortal.Auth.Services
                 u.IsActive &&
                 !u.IsDeleted);
 
+            DateTime? trialEnd = null;
+            if (user.SubscriptionStatus == SubscriptionStatus.Trialing && user.StripeSubscriptionId != null)
+            {
+                await ConfigureStripeAsync();
+                var sub = await new Stripe.SubscriptionService().GetAsync(user.StripeSubscriptionId);
+                trialEnd = sub.TrialEnd;
+            }
+
             return new SubscriptionStatusResponseDTO
             {
                 Status = user.SubscriptionStatus,
                 IsActive = user.IsActive,
                 MaxTenants = user.MaxTenants,
-                CurrentTenantCount = tenantCount
+                CurrentTenantCount = tenantCount,
+                TrialEnd = trialEnd
             };
         }
 
@@ -172,6 +206,17 @@ namespace TenantPortal.Auth.Services
                     // Payment succeeded — re-activate if previously suspended due to failed payment
                     case "invoice.payment_succeeded":
                         await HandlePaymentSucceededAsync(stripeEvent.Data.Object as Stripe.Invoice);
+                        break;
+
+                    // Trial ending in 3 days — notify admin to add a payment method
+                    case "customer.subscription.trial_will_end":
+                        await HandleTrialWillEndAsync(stripeEvent.Data.Object as Stripe.Subscription);
+                        break;
+
+                    // Customer updated (e.g. payment method added) — no DB change needed;
+                    // admin-billing-status endpoint checks Stripe live. Log for audit only.
+                    case "customer.updated":
+                        _logger.LogInformation("customer.updated received — no action required.");
                         break;
                 }
 
@@ -255,6 +300,40 @@ namespace TenantPortal.Auth.Services
             user.IsActive = true;
             user.UpdatedAt = DateTime.UtcNow;
             await _context.SaveChangesAsync();
+        }
+
+        /// <summary>
+        /// Fires a trial-ending notification when Stripe reports the trial ends within 3 days.
+        /// The HTTP POST is fire-and-forget; notification failure does not fail the webhook response.
+        /// </summary>
+        private async Task HandleTrialWillEndAsync(Stripe.Subscription? subscription)
+        {
+            if (subscription == null) return;
+            var user = await _context.Users.FirstOrDefaultAsync(u =>
+                u.StripeCustomerId == subscription.CustomerId && !u.IsDeleted);
+            if (user == null) return;
+
+            var daysLeft = subscription.TrialEnd.HasValue
+                ? Math.Max(0, (int)Math.Ceiling((subscription.TrialEnd.Value - DateTime.UtcNow).TotalDays))
+                : 3;
+
+            _ = NotifyTrialEndingAsync(user.Id, user.Email, daysLeft);
+        }
+
+        private async Task NotifyTrialEndingAsync(Guid userId, string email, int daysLeft)
+        {
+            try
+            {
+                var notificationsUrl = _configuration["Notifications:HttpUrl"] ?? "http://localhost:5004";
+                var client = _httpClientFactory.CreateClient();
+                await client.PostAsJsonAsync(
+                    $"{notificationsUrl}/api/notifications/internal/trial-ending",
+                    new { UserId = userId, Email = email, DaysLeft = daysLeft });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to send trial-ending notification for admin {UserId}.", userId);
+            }
         }
 
         // ── Helpers ──────────────────────────────────────────────────────────────

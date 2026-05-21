@@ -73,8 +73,17 @@ namespace TenantPortal.Transactions.Migrations
                     b.Property<Guid>("CreatedBy")
                         .HasColumnType("uuid");
 
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<int>("DueDayOfMonth")
                         .HasColumnType("integer");
+
+                    b.Property<DateTime?>("EndDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
 
                     b.Property<decimal>("MonthlyAmount")
                         .HasColumnType("numeric");
@@ -82,7 +91,7 @@ namespace TenantPortal.Transactions.Migrations
                     b.Property<DateTime>("StartDate")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<Guid>("TenantId")
+                    b.Property<Guid?>("TenantId")
                         .HasColumnType("uuid");
 
                     b.Property<Guid>("UnitId")
@@ -203,6 +212,9 @@ namespace TenantPortal.Transactions.Migrations
                     b.Property<int?>("Bedrooms")
                         .HasColumnType("integer");
 
+                    b.Property<int>("BillingMode")
+                        .HasColumnType("integer");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -229,6 +241,10 @@ namespace TenantPortal.Transactions.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("PropertyId", "UnitNumber")
+                        .IsUnique()
+                        .HasFilter("\"IsDeleted\" = false");
 
                     b.ToTable("Units");
                 });

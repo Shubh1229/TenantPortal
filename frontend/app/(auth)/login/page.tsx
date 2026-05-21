@@ -7,7 +7,15 @@ import { authApi } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Building2, ShieldCheck } from 'lucide-react';
+import { Building2, ShieldCheck, FlaskConical } from 'lucide-react';
+
+const isDev = process.env.NODE_ENV === 'development';
+
+const DEV_ACCOUNTS = [
+    { label: 'Admin',   email: 'fakeadmin@email.com',  password: 'DevAdmin123!',  role: 'Admin' },
+    { label: 'Tenant',  email: 'faketenant@email.com', password: 'DevTenant123!', role: 'Tenant' },
+    { label: 'Tester',  email: 'faketester@email.com', password: 'DevTester123!', role: 'Tester' },
+] as const;
 
 type LoginStep = 'credentials' | 'totp';
 
@@ -20,6 +28,23 @@ export default function LoginPage() {
     const [temporaryToken, setTemporaryToken] = useState('');
     const [error, setError] = useState('');
     const [isLoading, setIsLoading] = useState(false);
+
+    async function handleDevLogin(devEmail: string, devPassword: string, role: string) {
+        setIsLoading(true);
+        setError('');
+        try {
+            const response = await authApi.devLogin(devEmail, devPassword);
+            localStorage.setItem('accessToken', response.accessToken);
+            localStorage.setItem('refreshToken', response.refreshToken);
+            if (role === 'Admin') router.push('/admin');
+            else if (role === 'Tester') router.push('/super-admin/tests');
+            else router.push('/tenant');
+        } catch {
+            setError('Dev login failed — make sure the server is running in Development mode.');
+        } finally {
+            setIsLoading(false);
+        }
+    }
 
     async function handleCredentials(e: React.FormEvent) {
         e.preventDefault();
@@ -109,6 +134,30 @@ export default function LoginPage() {
                         </p>
                     </div>
 
+                    {isDev && (
+                        <div className="rounded-lg border border-yellow-500/20 bg-yellow-500/5 p-4 space-y-3">
+                            <div className="flex items-center gap-2 text-yellow-400 text-xs font-medium">
+                                <FlaskConical size={13} />
+                                Dev shortcuts (bypasses TOTP)
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                                {DEV_ACCOUNTS.map(acct => (
+                                    <Button
+                                        key={acct.role}
+                                        type="button"
+                                        size="sm"
+                                        variant="outline"
+                                        className="border-yellow-500/30 text-yellow-300 hover:bg-yellow-500/10 text-xs h-7"
+                                        disabled={isLoading}
+                                        onClick={() => handleDevLogin(acct.email, acct.password, acct.role)}
+                                    >
+                                        {acct.label}
+                                    </Button>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
                     {step === 'credentials' ? (
                         <form onSubmit={handleCredentials} className="space-y-5">
                             <div className="space-y-1.5">
@@ -136,7 +185,17 @@ export default function LoginPage() {
                                     className="bg-zinc-900 border-zinc-700 text-white placeholder:text-zinc-600 focus:border-indigo-500"
                                 />
                             </div>
-                            {error && <p className="text-sm text-red-400">{error}</p>}
+                            {error && (
+                                <div className="space-y-1">
+                                    <p className="text-sm text-red-400">{error}</p>
+                                    <p className="text-xs text-zinc-500">
+                                        Forgot your password?{' '}
+                                        <Link href="/forgot-password" className="text-indigo-400 hover:text-indigo-300">
+                                            Reset it here
+                                        </Link>
+                                    </p>
+                                </div>
+                            )}
                             <Button
                                 type="submit"
                                 className="w-full bg-indigo-600 hover:bg-indigo-500 text-white"

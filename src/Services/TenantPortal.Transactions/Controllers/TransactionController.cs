@@ -160,6 +160,21 @@ namespace TenantPortal.Transactions.Controllers
         // ── Rent Schedule Endpoints ─────────────────────────────────────────────────
 
         /// <summary>
+        /// Returns the rent schedule for the calling tenant — handles both PerTenant and SharedUnit billing modes.
+        /// </summary>
+        [Authorize(Policy = AppConstants.Policies.RequireTenant)]
+        [HttpGet("/api/rent-schedule/my")]
+        public async Task<IActionResult> GetMyRentScheduleAsync()
+        {
+            var (userId, _) = GetUserIdAndRole();
+            if (userId == null) return BadRequest("Invalid user ID in token");
+
+            var schedule = await _rentScheduleService.GetMyRentScheduleAsync(userId.Value);
+            if (schedule == null) return NotFound("Rent schedule not found.");
+            return Ok(schedule);
+        }
+
+        /// <summary>
         /// Returns the rent schedule for the specified tenant.
         /// Tenants may only retrieve their own schedule.
         /// </summary>
@@ -177,6 +192,53 @@ namespace TenantPortal.Transactions.Controllers
             var schedule = await _rentScheduleService.GetRentScheduleAsync(tenantId);
             if (schedule == null) return NotFound("Rent schedule not found.");
             return Ok(schedule);
+        }
+
+        /// <summary>Returns all rent schedules scoped to the caller. Admins see only schedules they created.</summary>
+        [Authorize(Policy = AppConstants.Policies.RequireAdmin)]
+        [HttpGet("/api/rent-schedules")]
+        public async Task<IActionResult> GetAllRentSchedulesAsync()
+        {
+            var (userId, role) = GetUserIdAndRole();
+            if (userId == null || role == null) return BadRequest("Invalid user ID or role in token");
+            var schedules = await _rentScheduleService.GetAllRentSchedulesAsync(userId.Value, role.Value);
+            return Ok(schedules);
+        }
+
+        /// <summary>Returns all soft-deleted rent schedules scoped to the caller.</summary>
+        [Authorize(Policy = AppConstants.Policies.RequireAdmin)]
+        [HttpGet("/api/rent-schedules/deleted")]
+        public async Task<IActionResult> GetDeletedRentSchedulesAsync()
+        {
+            var (userId, role) = GetUserIdAndRole();
+            if (userId == null || role == null) return BadRequest("Invalid user ID or role in token");
+            var schedules = await _rentScheduleService.GetDeletedRentSchedulesAsync(userId.Value, role.Value);
+            return Ok(schedules);
+        }
+
+        /// <summary>Restores a soft-deleted rent schedule. Admin and Super Admin only.</summary>
+        [Authorize(Policy = AppConstants.Policies.RequireAdmin)]
+        [HttpPatch("/api/rent-schedule/{id}/restore")]
+        public async Task<IActionResult> RestoreRentScheduleAsync([FromRoute] Guid id)
+        {
+            var (userId, role) = GetUserIdAndRole();
+            if (userId == null || role == null) return BadRequest("Invalid user ID or role in token");
+            var result = await _rentScheduleService.RestoreRentScheduleAsync(id, userId.Value, role.Value);
+            if (!result) return BadRequest("Failed to restore rent schedule.");
+            return Ok("Rent schedule restored successfully");
+        }
+
+        /// <summary>Returns the current tenant's assigned unit and property info.</summary>
+        [Authorize(Policy = AppConstants.Policies.RequireTenant)]
+        [HttpGet("/api/units/my-info")]
+        public async Task<IActionResult> GetMyUnitInfoAsync()
+        {
+            var (userId, _) = GetUserIdAndRole();
+            if (userId == null) return BadRequest("Invalid user ID in token");
+
+            var assignment = await _transactionService.GetMyUnitInfoAsync(userId.Value);
+            if (assignment == null) return NotFound("No unit assignment found.");
+            return Ok(assignment);
         }
 
         /// <summary>Creates a rent schedule for a tenant. Admin and Super Admin only.</summary>
@@ -205,6 +267,19 @@ namespace TenantPortal.Transactions.Controllers
             var result = await _rentScheduleService.UpdateRentScheduleAsync(request, userId.Value, role.Value);
             if (!result) return BadRequest("Failed to update rent schedule.");
             return Ok("Rent schedule updated successfully");
+        }
+
+        /// <summary>Deletes a rent schedule. Admin and Super Admin only.</summary>
+        [Authorize(Policy = AppConstants.Policies.RequireAdmin)]
+        [HttpDelete("/api/rent-schedule/{id}")]
+        public async Task<IActionResult> DeleteRentScheduleAsync([FromRoute] Guid id)
+        {
+            var (userId, role) = GetUserIdAndRole();
+            if (userId == null || role == null) return BadRequest("Invalid user ID or role in token");
+
+            var result = await _rentScheduleService.DeleteRentScheduleAsync(id, userId.Value, role.Value);
+            if (!result) return BadRequest("Failed to delete rent schedule.");
+            return Ok("Rent schedule deleted successfully");
         }
 
         // ── Helpers ─────────────────────────────────────────────────────────────────

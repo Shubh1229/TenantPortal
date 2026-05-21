@@ -19,6 +19,12 @@ namespace TenantPortal.Auth.Models
         /// <summary>Login identifier. Unique across all users.</summary>
         public required string Email { get; set; }
 
+        /// <summary>
+        /// True once the user has submitted the post-registration profile form (name, phone, etc.).
+        /// The frontend redirects to /profile-setup until this is set.
+        /// </summary>
+        public bool IsProfileComplete { get; set; }
+
         /// <summary>bcrypt hash of the user's password. Never stored in plain text.</summary>
         public required string PasswordHash { get; set; }
 
@@ -62,6 +68,12 @@ namespace TenantPortal.Auth.Models
         /// <summary>ID of the user who sent the invitation that created this account. <c>null</c> for the Super Admin.</summary>
         public Guid? InvitedBy { get; set; }
 
+        /// <summary>SHA-256 hash of the active password-reset token. Null when no reset is pending.</summary>
+        public string? PasswordResetTokenHash { get; set; }
+
+        /// <summary>UTC expiry of the password-reset token. Null when no reset is pending.</summary>
+        public DateTime? PasswordResetTokenExpiresAt { get; set; }
+
         // ── SaaS Subscription Fields (Admin role only) ────────────────────────────
 
         /// <summary>
@@ -88,5 +100,29 @@ namespace TenantPortal.Auth.Models
         /// Set to 10 for the base $20/month plan; increase for higher tiers.
         /// </summary>
         public int? MaxTenants { get; set; }
+
+        // ── Stripe Connect Fields (Admin role only) ───────────────────────────────────
+
+        /// <summary>
+        /// Stripe Express connected account ID.
+        /// Set when the admin initiates bank-account onboarding via Stripe Connect.
+        /// <c>null</c> until onboarding begins.
+        /// </summary>
+        public string? StripeConnectedAccountId { get; set; }
+
+        /// <summary>
+        /// Cached value of <c>charges_enabled</c> from Stripe — updated by the
+        /// <c>account.updated</c> Connect webhook. True once the admin has completed
+        /// onboarding and can receive tenant payments.
+        /// </summary>
+        public bool StripeConnectChargesEnabled { get; set; } = false;
+
+        // ── Hierarchy is tracked relationally, not as denormalised lists ─────────────
+        //
+        // "Who did this user invite?"   → query Users WHERE InvitedBy = this.Id
+        // "Pending invites not yet accepted?" → query InviteTokens WHERE CreatedBy = this.Id AND !Used
+        //
+        // IsActive = false  → placeholder created when an invite is sent; still unregistered
+        // IsActive = true   → fully registered account
     }
 }

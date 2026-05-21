@@ -1,5 +1,5 @@
 import { apiRequest } from './client';
-import { AdminRegisterResponse, LoginRequest, LoginResponse, TotpValidationRequest } from '@/types';
+import { AdminRegisterResponse, ConnectStatus, LoginRequest, LoginResponse, SubscriptionStatusResponse, TotpValidationRequest, UserProfile } from '@/types';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
@@ -41,14 +41,113 @@ export const authApi = {
         }),
 
     getSubscriptionStatus: () =>
-        apiRequest<{ status: string; isActive: boolean; maxTenants: number | null; currentTenantCount: number }>(
-            '/api/auth/subscription/status',
-            { method: 'GET' }
-        ),
+        apiRequest<SubscriptionStatusResponse>('/api/auth/subscription/status', { method: 'GET' }),
 
     getBillingPortalUrl: (returnUrl: string) =>
         apiRequest<{ url: string }>('/api/auth/subscription/portal', {
             method: 'POST',
             body: { returnUrl },
+        }),
+
+    getUsers: (role?: string) =>
+        apiRequest<import('@/types').User[]>(
+            `/api/auth/users${role ? `?role=${role}` : ''}`
+        ),
+
+    getPublicProfile: (userId: string) =>
+        apiRequest<import('@/types').PublicUserProfile>(`/api/auth/users/${userId}/public-profile`),
+
+    devLogin: (email: string, password: string) =>
+        apiRequest<import('@/types').LoginResponse>('/api/auth/dev-login', {
+            method: 'POST',
+            body: { email, password },
+            requiresAuth: false,
+        }),
+
+    switchRole: (targetRole: string) =>
+        apiRequest<{ accessToken: string }>('/api/auth/switch-role', {
+            method: 'POST',
+            body: { targetRole },
+        }),
+
+    // ── Profile ───────────────────────────────────────────────────────────────────
+
+    getProfile: () =>
+        apiRequest<UserProfile>('/api/auth/account/profile'),
+
+    updateProfile: (data: {
+        firstName: string;
+        lastName: string;
+        phoneNumber: string;
+        emergencyContactName?: string;
+        emergencyContactPhone?: string;
+    }) =>
+        apiRequest<{ success: boolean }>('/api/auth/account/profile', {
+            method: 'PUT',
+            body: data,
+        }),
+
+    // ── Notification Emails ───────────────────────────────────────────────────────
+
+    addNotificationEmail: (email: string) =>
+        apiRequest<{ success: boolean }>('/api/auth/account/notification-emails', {
+            method: 'POST',
+            body: { email },
+        }),
+
+    deleteNotificationEmail: (id: string) =>
+        apiRequest<{ success: boolean }>(`/api/auth/account/notification-emails/${id}`, {
+            method: 'DELETE',
+        }),
+
+    // ── Primary Email ─────────────────────────────────────────────────────────────
+
+    updatePrimaryEmail: (newEmail: string, currentPassword: string) =>
+        apiRequest<{ success: boolean; message: string }>('/api/auth/account/primary-email', {
+            method: 'PUT',
+            body: { newEmail, currentPassword },
+        }),
+
+    // ── Password ──────────────────────────────────────────────────────────────────
+
+    changePassword: (currentPassword: string, newPassword: string) =>
+        apiRequest<{ success: boolean; message: string }>('/api/auth/account/password', {
+            method: 'PUT',
+            body: { currentPassword, newPassword },
+        }),
+
+    // ── Delete Account ────────────────────────────────────────────────────────────
+
+    deleteAccount: (confirmEmail: string) =>
+        apiRequest<{ success: boolean }>('/api/auth/account', {
+            method: 'DELETE',
+            body: { confirmEmail },
+        }),
+
+    // ── Password Reset ────────────────────────────────────────────────────────────
+
+    forgotPassword: (email: string, frontendBaseUrl: string) =>
+        apiRequest<void>('/api/auth/forgot-password', {
+            method: 'POST',
+            body: { email, frontendBaseUrl },
+            requiresAuth: false,
+        }),
+
+    resetPassword: (token: string, newPassword: string) =>
+        apiRequest<void>('/api/auth/reset-password', {
+            method: 'POST',
+            body: { token, newPassword },
+            requiresAuth: false,
+        }),
+
+    // ── Stripe Connect ────────────────────────────────────────────────────────────
+
+    getConnectStatus: () =>
+        apiRequest<ConnectStatus>('/api/auth/connect/status'),
+
+    getConnectOnboardingUrl: (returnUrl: string, refreshUrl: string) =>
+        apiRequest<{ onboardingUrl: string }>('/api/auth/connect/onboard', {
+            method: 'POST',
+            body: { returnUrl, refreshUrl },
         }),
 };

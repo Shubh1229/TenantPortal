@@ -63,6 +63,7 @@ builder.Services.AddAuthorization(options =>
 builder.Services.AddDbContext<TransactionDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("Postgres")));
 
+builder.Services.AddHttpClient();
 builder.Services.AddScoped<ITransactionService, TransactionService>();
 builder.Services.AddScoped<IRentScheduleService, RentScheduleService>();
 builder.Services.AddScoped<IStripeService, StripeService>();
@@ -70,7 +71,9 @@ builder.Services.AddSingleton<ISecretsProvider>(
     new AzureVaultSecretsProvider("https://singhresidenthub-vault.vault.azure.net/"));
 builder.Services.AddHostedService<OverduePaymentJob>();
 
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .AddJsonOptions(o =>
+        o.JsonSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter()));
 
 var app = builder.Build();
 

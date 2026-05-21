@@ -34,6 +34,15 @@ namespace TenantPortal.Transactions.Services
         public async Task<bool> CreateRentScheduleAsync(CreateRentScheduleRequestDTO request, Guid userId, UserRole role)
         {
             if (role == UserRole.Tenant) return false;
+
+            // Validate: PerTenant schedules require a TenantId; SharedUnit schedules must not have one.
+            var unit = await _context.Units.FirstOrDefaultAsync(u => u.Id == request.UnitId && !u.IsDeleted);
+            if (unit == null) return false;
+
+            if (unit.BillingMode == BillingMode.PerTenant && request.TenantId == null) return false;
+            if (unit.BillingMode == BillingMode.SharedUnit) request.TenantId = null;
+
+            var startUtc = DateTime.SpecifyKind(request.StartDate, DateTimeKind.Utc);
             RentSchedule schedule = new RentSchedule
             {
                 Id = Guid.NewGuid(),
@@ -41,7 +50,10 @@ namespace TenantPortal.Transactions.Services
                 UnitId = request.UnitId,
                 MonthlyAmount = request.MonthlyAmount,
                 DueDayOfMonth = request.DueDayOfMonth,
-                StartDate = request.StartDate,
+                StartDate = startUtc,
+                EndDate = request.EndDate.HasValue
+                    ? DateTime.SpecifyKind(request.EndDate.Value, DateTimeKind.Utc)
+                    : startUtc.AddYears(1),
                 CreatedBy = userId,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow,
@@ -56,8 +68,76 @@ namespace TenantPortal.Transactions.Services
 
         public async Task<RentSchedule?> GetRentScheduleAsync(Guid tenantId)
         {
-            var schedule = await _context.RentSchedules.FirstOrDefaultAsync(s => s.TenantId == tenantId);
-            return schedule;
+            return await _context.RentSchedules.FirstOrDefaultAsync(s => s.TenantId == tenantId && !s.IsDeleted);
+        }
+
+        /// <summary>
+        /// Returns the rent schedule relevant to a tenant — handles both PerTenant and SharedUnit modes.
+        /// Finds the tenant's active unit assignment, then returns the appropriate schedule.
+        /// </summary>
+        public async Task<RentSchedule?> GetMyRentScheduleAsync(Guid tenantId)
+        {
+            // First check for a per-tenant schedule (works regardless of billing mode)
+            var perTenantSchedule = await _context.RentSchedules
+                .FirstOrDefaultAsync(s => s.TenantId == tenantId && !s.IsDeleted);
+            if (perTenantSchedule != null) return perTenantSchedule;
+
+            // Fall back to shared-unit schedule via the tenant's active assignment
+            var assignment = await _context.TenantUnitAssignments
+                .FirstOrDefaultAsync(a => a.TenantId == tenantId && a.EndDate == null);
+            if (assignment == null) return null;
+
+            return await _context.RentSchedules
+                .FirstOrDefaultAsync(s => s.UnitId == assignment.UnitId && s.TenantId == null && !s.IsDeleted);
+        }
+
+        public async Task<List<RentSchedule>> GetAllRentSchedulesAsync(Guid userId, UserRole role)
+        {
+            var query = _context.RentSchedules.Where(r => !r.IsDeleted);
+            if (role == UserRole.Admin)
+            {
+                var adminUnitIds = AdminUnitIds(userId);
+                query = query.Where(r => adminUnitIds.Contains(r.UnitId));
+            }
+            return await query.ToListAsync();
+        }
+
+        public async Task<List<RentSchedule>> GetDeletedRentSchedulesAsync(Guid userId, UserRole role)
+        {
+            var query = _context.RentSchedules.Where(r => r.IsDeleted);
+            if (role == UserRole.Admin)
+            {
+                var adminUnitIds = AdminUnitIds(userId);
+                query = query.Where(r => adminUnitIds.Contains(r.UnitId));
+            }
+            return await query.ToListAsync();
+        }
+
+        // Returns an IQueryable of unit IDs belonging to properties owned by the given admin.
+        private IQueryable<Guid> AdminUnitIds(Guid adminId)
+        {
+            var propertyIds = _context.Properties
+                .Where(p => p.AdminId == adminId && !p.IsDeleted)
+                .Select(p => p.Id);
+            return _context.Units
+                .Where(u => propertyIds.Contains(u.PropertyId) && !u.IsDeleted)
+                .Select(u => u.Id);
+        }
+
+        public async Task<bool> RestoreRentScheduleAsync(Guid id, Guid userId, UserRole role)
+        {
+            if (role == UserRole.Tenant) return false;
+            try
+            {
+                var schedule = await _context.RentSchedules.FirstOrDefaultAsync(s => s.Id == id && s.IsDeleted);
+                if (schedule == null) return false;
+                schedule.IsDeleted = false;
+                schedule.DeletedAt = null;
+                schedule.UpdatedAt = DateTime.UtcNow;
+                await _context.SaveChangesAsync();
+                return true;
+            }
+            catch (Exception) { return false; }
         }
 
         public async Task<bool> UpdateRentScheduleAsync(UpdateRentScheduleRequestDTO request, Guid userId, UserRole role)
@@ -69,6 +149,23 @@ namespace TenantPortal.Transactions.Services
                 if (schedule == null) return false;
                 if (request.DueDayOfMonth != null) schedule.DueDayOfMonth = request.DueDayOfMonth.Value;
                 if (request.MonthlyAmount != null) schedule.MonthlyAmount = request.MonthlyAmount.Value;
+                if (request.EndDate != null) schedule.EndDate = DateTime.SpecifyKind(request.EndDate.Value, DateTimeKind.Utc);
+                schedule.UpdatedAt = DateTime.UtcNow;
+                await _context.SaveChangesAsync();
+                return true;
+            }
+            catch (Exception) { return false; }
+        }
+
+        public async Task<bool> DeleteRentScheduleAsync(Guid id, Guid userId, UserRole role)
+        {
+            if (role == UserRole.Tenant) return false;
+            try
+            {
+                var schedule = await _context.RentSchedules.FirstOrDefaultAsync(s => s.Id == id && !s.IsDeleted);
+                if (schedule == null) return false;
+                schedule.IsDeleted = true;
+                schedule.DeletedAt = DateTime.UtcNow;
                 schedule.UpdatedAt = DateTime.UtcNow;
                 await _context.SaveChangesAsync();
                 return true;

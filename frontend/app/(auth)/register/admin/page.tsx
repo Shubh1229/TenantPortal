@@ -69,11 +69,12 @@ function AdminRegisterForm() {
 
                 <div className="space-y-6">
                     <h2 className="text-3xl font-light text-zinc-200 leading-relaxed">
-                        Start managing your properties for{' '}
-                        <span className="text-indigo-400 font-semibold">$20/month</span>
+                        <span className="text-indigo-400 font-semibold">7-day free trial</span>,{' '}
+                        then $20/month
                     </h2>
                     <ul className="space-y-3">
                         {[
+                            'No credit card required to start',
                             'Invite up to 10 tenants',
                             'Rent collection via card or ACH',
                             'Contract storage & management',
@@ -91,7 +92,7 @@ function AdminRegisterForm() {
                 </div>
 
                 <p className="text-xs text-zinc-600">
-                    Billed monthly via Stripe. Your card is not charged until after setup.
+                    Free for 7 days, then $20/month billed via Stripe. No card required upfront.
                 </p>
             </div>
 
@@ -109,7 +110,7 @@ function AdminRegisterForm() {
                             <div>
                                 <h1 className="text-2xl font-semibold text-white">Create admin account</h1>
                                 <p className="mt-1 text-sm text-zinc-400">
-                                    You&apos;ll be redirected to Stripe to set up billing after registration.
+                                    Start your 7-day free trial — no card required. You&apos;ll be redirected to Stripe to confirm.
                                 </p>
                             </div>
                             <form onSubmit={handleRegister} className="space-y-5">

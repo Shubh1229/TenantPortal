@@ -18,7 +18,10 @@ namespace TenantPortal.Contracts.DTOs
         /// <summary>UTC timestamp when the contract was uploaded.</summary>
         public DateTime UploadedAt { get; set; }
 
-        /// <summary>Pre-signed URL for in-browser viewing or downloading the PDF.</summary>
+        /// <summary>Pre-signed URL for downloading the PDF.</summary>
         public required string DownloadUrl { get; set; }
+
+        /// <summary>Pre-signed URL for in-browser PDF preview (content-disposition: inline).</summary>
+        public required string PreviewUrl { get; set; }
     }
 }

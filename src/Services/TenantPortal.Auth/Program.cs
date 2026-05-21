@@ -69,6 +69,7 @@ builder.Services.AddScoped<IJwtService, JwtService>();
 builder.Services.AddScoped<ITotpService, TotpService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<ISubscriptionService, SubscriptionService>();
+builder.Services.AddScoped<IConnectService, ConnectService>();
 builder.Services.AddScoped<SystemTestRunner>();
 builder.Services.AddSingleton<ISecretsProvider>(
     new AzureVaultSecretsProvider("https://singhresidenthub-vault.vault.azure.net/"));
@@ -107,6 +108,14 @@ using (var scope = app.Services.CreateScope())
     var secrets = scope.ServiceProvider.GetRequiredService<ISecretsProvider>();
     var totpEnc = scope.ServiceProvider.GetRequiredService<ITotpEncryptionService>();
     await DbSeeder.SeedAsync(context, secrets, totpEnc);
+}
+
+if (app.Environment.IsDevelopment())
+{
+    using var scope = app.Services.CreateScope();
+    var context = scope.ServiceProvider.GetRequiredService<AuthDbContext>();
+    var totpEnc = scope.ServiceProvider.GetRequiredService<ITotpEncryptionService>();
+    await DbSeeder.SeedDevAccountsAsync(context, totpEnc);
 }
 
 app.Run();

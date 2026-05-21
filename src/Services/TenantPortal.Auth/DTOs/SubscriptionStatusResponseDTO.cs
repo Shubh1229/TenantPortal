@@ -21,5 +21,10 @@ namespace TenantPortal.Auth.DTOs
 
         /// <summary>Number of active tenants currently under this Admin's account.</summary>
         public int CurrentTenantCount { get; set; }
+
+        /// <summary>
+        /// UTC timestamp when the trial period ends. Only populated when <see cref="Status"/> is <c>Trialing</c>.
+        /// </summary>
+        public DateTime? TrialEnd { get; set; }
     }
 }

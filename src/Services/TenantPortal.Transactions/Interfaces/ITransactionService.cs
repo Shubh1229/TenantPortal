@@ -41,5 +41,11 @@ namespace TenantPortal.Transactions.Interfaces
 
         /// <summary>Seeds demo rent schedule and transaction history for a Tester account. Idempotent.</summary>
         Task<bool> SeedTesterDataAsync(Guid tenantId);
+
+        /// <summary>
+        /// Returns unit and property info for the calling tenant's active assignment,
+        /// or <c>null</c> if the tenant is not currently assigned to any unit.
+        /// </summary>
+        Task<UnitPropertyInfoDTO?> GetMyUnitInfoAsync(Guid tenantId);
     }
 }

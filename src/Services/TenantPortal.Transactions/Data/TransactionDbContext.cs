@@ -22,6 +22,12 @@ namespace TenantPortal.Transactions.Data
 
             // Supports the per-admin scope query: filter Properties by AdminId, then join to Units/Transactions
             modelBuilder.Entity<Property>().HasIndex(p => p.AdminId);
+
+            // Prevent duplicate unit numbers within the same property
+            modelBuilder.Entity<Unit>()
+                .HasIndex(u => new { u.PropertyId, u.UnitNumber })
+                .IsUnique()
+                .HasFilter("\"IsDeleted\" = false");
         }
 
         /// <summary>Rental properties.</summary>

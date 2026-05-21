@@ -25,6 +25,9 @@ namespace TenantPortal.Shared.Enums
         InviteCreated,
 
         /// <summary>An Admin uploaded a new lease contract for a tenant.</summary>
-        ContractUploaded
+        ContractUploaded,
+
+        /// <summary>An Admin's free trial ends within 3 days and no payment method is on file.</summary>
+        TrialEnding
     }
 }

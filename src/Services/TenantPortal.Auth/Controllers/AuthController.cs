@@ -5,6 +5,7 @@ using TenantPortal.Auth.DTOs;
 using TenantPortal.Auth.Interfaces;
 using TenantPortal.Shared.Constants;
 using TenantPortal.Shared.Enums;
+using Microsoft.Extensions.Hosting;
 
 namespace TenantPortal.Auth.Controllers
 {
@@ -17,10 +18,12 @@ namespace TenantPortal.Auth.Controllers
     public class AuthController : ControllerBase
     {
         private readonly IAuthService _authService;
+        private readonly IHostEnvironment _env;
 
-        public AuthController(IAuthService authService)
+        public AuthController(IAuthService authService, IHostEnvironment env)
         {
             _authService = authService;
+            _env = env;
         }
 
         /// <summary>
@@ -96,6 +99,99 @@ namespace TenantPortal.Auth.Controllers
         {
             await _authService.RevokeRefreshTokenAsync(request.RefreshToken);
             return Ok("Logout successful.");
+        }
+
+        /// <summary>
+        /// Dev-only login that skips TOTP verification.
+        /// Returns 404 outside of the Development environment.
+        /// Only the three hardcoded dev accounts (fakeadmin/faketenant/faketester) are accepted.
+        /// </summary>
+        [HttpPost("dev-login")]
+        public async Task<IActionResult> DevLoginAsync([FromBody] DevLoginRequestDTO request)
+        {
+            if (!_env.IsDevelopment())
+                return NotFound();
+
+            var result = await _authService.DevLoginAsync(request.Email, request.Password);
+            if (result == null) return Unauthorized("Invalid credentials or account is not a dev account.");
+            return Ok(result);
+        }
+
+        /// <summary>
+        /// Issues a new access token with a downgraded role for UI testing.
+        /// Only callable by SuperAdmin or an already-switched SuperAdmin.
+        /// </summary>
+        [Authorize(Policy = AppConstants.Policies.RequireTenant)]
+        [HttpPost("switch-role")]
+        public async Task<IActionResult> SwitchRoleAsync([FromBody] SwitchRoleRequestDTO request)
+        {
+            var (userId, role) = GetUserIdAndRole();
+            if (userId == null || role == null) return BadRequest("Invalid token");
+
+            var isSwitched = User.FindFirstValue(AppConstants.Claims.IsSuperAdminSwitched) == "true";
+
+            if (role != UserRole.SuperAdmin && !isSwitched)
+                return Forbid();
+
+            if (!Enum.TryParse<UserRole>(request.TargetRole, out var targetRole))
+                return BadRequest($"Unknown role: {request.TargetRole}");
+
+            var newToken = await _authService.SwitchRoleAsync(userId.Value, targetRole);
+            if (newToken == null) return BadRequest("Switch failed.");
+
+            return Ok(new { accessToken = newToken });
+        }
+
+        /// <summary>
+        /// Sends a password-reset email if the address matches a known active account.
+        /// Always returns 200 to prevent user enumeration.
+        /// </summary>
+        [HttpPost("forgot-password")]
+        public async Task<IActionResult> ForgotPasswordAsync([FromBody] ForgotPasswordRequestDTO request)
+        {
+            await _authService.ForgotPasswordAsync(request.Email, request.FrontendBaseUrl);
+            return Ok();
+        }
+
+        /// <summary>
+        /// Validates a password-reset token and sets a new password.
+        /// The token is single-use and expires after 1 hour.
+        /// </summary>
+        [HttpPost("reset-password")]
+        public async Task<IActionResult> ResetPasswordAsync([FromBody] ResetPasswordRequestDTO request)
+        {
+            var error = await _authService.ResetPasswordAsync(request.Token, request.NewPassword);
+            if (error != null) return BadRequest(new { error });
+            return Ok();
+        }
+
+        /// <summary>Returns public profile info for any user by ID. Any authenticated user may call this to look up admins or co-tenants.</summary>
+        [Authorize(Policy = AppConstants.Policies.RequireTenant)]
+        [HttpGet("users/{id}/public-profile")]
+        public async Task<IActionResult> GetPublicUserProfileAsync([FromRoute] Guid id)
+        {
+            var profile = await _authService.GetPublicUserProfileAsync(id);
+            if (profile == null) return NotFound();
+            return Ok(profile);
+        }
+
+        /// <summary>
+        /// Returns active users, optionally filtered by role.
+        /// Admins see only users they invited; SuperAdmin sees all.
+        /// </summary>
+        [Authorize(Policy = AppConstants.Policies.RequireAdmin)]
+        [HttpGet("users")]
+        public async Task<IActionResult> GetUsersAsync([FromQuery] string? role = null)
+        {
+            var (userId, callerRole) = GetUserIdAndRole();
+            if (userId == null || callerRole == null) return BadRequest("Invalid user ID or role in token");
+
+            UserRole? roleFilter = null;
+            if (role != null && Enum.TryParse<UserRole>(role, out var parsed))
+                roleFilter = parsed;
+
+            var users = await _authService.GetUsersAsync(roleFilter, userId.Value, callerRole.Value);
+            return Ok(users);
         }
 
         // ── Helpers ─────────────────────────────────────────────────────────────────

@@ -42,7 +42,7 @@ namespace TenantPortal.Notifications.Services
         {
             try
             {
-                var registrationUrl = $"{request.FrontendBaseUrl}/register?token={request.InviteToken}";
+                var registrationUrl = $"{request.FrontendBaseUrl}/register?token={Uri.EscapeDataString(request.InviteToken)}";
 
                 var subject = "You've been invited to Singh Resident Hub";
                 var body = $@"

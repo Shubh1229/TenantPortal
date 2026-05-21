@@ -2,10 +2,6 @@ using Microsoft.EntityFrameworkCore;
 
 namespace TenantPortal.Auth.Data
 {
-    /// <summary>
-    /// EF Core database context for the Auth service.
-    /// Manages <see cref="Models.User"/> and <see cref="Models.InviteToken"/> tables.
-    /// </summary>
     public class AuthDbContext : DbContext
     {
         public AuthDbContext(DbContextOptions<AuthDbContext> options) : base(options) { }
@@ -26,12 +22,23 @@ namespace TenantPortal.Auth.Data
 
             modelBuilder.Entity<Models.InviteToken>().Property(t => t.TokenHash).HasMaxLength(512);
             modelBuilder.Entity<Models.InviteToken>().Property(t => t.Email).HasMaxLength(256);
+
+            modelBuilder.Entity<Models.UserProfile>()
+                .HasIndex(p => p.UserId)
+                .IsUnique();
+
+            modelBuilder.Entity<Models.UserNotificationEmail>()
+                .HasIndex(e => new { e.UserId, e.Email })
+                .IsUnique();
+
+            modelBuilder.Entity<Models.UserNotificationEmail>()
+                .Property(e => e.Email)
+                .HasMaxLength(256);
         }
 
-        /// <summary>Registered users across all roles.</summary>
         public DbSet<Models.User> Users { get; set; }
-
-        /// <summary>Pending account invitations, including consumed and expired ones.</summary>
         public DbSet<Models.InviteToken> InviteTokens { get; set; }
+        public DbSet<Models.UserProfile> UserProfiles { get; set; }
+        public DbSet<Models.UserNotificationEmail> UserNotificationEmails { get; set; }
     }
 }

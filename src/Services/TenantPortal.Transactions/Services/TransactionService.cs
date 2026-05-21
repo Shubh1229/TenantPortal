@@ -1,4 +1,7 @@
-﻿using TenantPortal.Shared.Enums;
+﻿using Microsoft.Extensions.Configuration;
+using System.Net.Http.Json;
+using System.Text.Json;
+using TenantPortal.Shared.Enums;
 using TenantPortal.Transactions.Data;
 using TenantPortal.Transactions.DTOs;
 using TenantPortal.Transactions.Interfaces;
@@ -10,9 +13,20 @@ namespace TenantPortal.Transactions.Services
     public class TransactionService : ITransactionService
     {
         private readonly TransactionDbContext _context;
-        public TransactionService(TransactionDbContext context) 
+        private readonly IHttpClientFactory _httpClientFactory;
+        private readonly IConfiguration _configuration;
+        private readonly ILogger<TransactionService> _logger;
+
+        public TransactionService(
+            TransactionDbContext context,
+            IHttpClientFactory httpClientFactory,
+            IConfiguration configuration,
+            ILogger<TransactionService> logger)
         {
             _context = context;
+            _httpClientFactory = httpClientFactory;
+            _configuration = configuration;
+            _logger = logger;
         }
         public async Task<bool> ApproveExternalPaymentRequestAsync(Guid transactionId)
         {
@@ -158,6 +172,24 @@ namespace TenantPortal.Transactions.Services
         {
             try
             {
+                var unit = await _context.Units.FirstOrDefaultAsync(u => u.Id == request.UnitId && !u.IsDeleted);
+                var property = unit != null
+                    ? await _context.Properties.FirstOrDefaultAsync(p => p.Id == unit.PropertyId && !p.IsDeleted)
+                    : null;
+
+                // Block if we can't resolve the admin — can't verify billing status
+                if (property?.AdminId == null)
+                {
+                    _logger.LogWarning("External payment blocked — cannot resolve admin for unit {UnitId}.", request.UnitId);
+                    return false;
+                }
+
+                if (!await CheckAdminCanReceivePaymentsAsync(property.AdminId.Value))
+                {
+                    _logger.LogWarning("External payment blocked — admin {AdminId} billing gate failed.", property.AdminId);
+                    return false;
+                }
+
                 Transaction transaction = new Transaction
                 {
                     Id = Guid.NewGuid(),
@@ -168,7 +200,7 @@ namespace TenantPortal.Transactions.Services
                     Status = TransactionStatus.Pending,
                     PaymentMethod = request.PaymentMethod,
                     ExternalMethodNote = request.Note,
-                    PaidDate = request.PaidDate,
+                    PaidDate = DateTime.SpecifyKind(request.PaidDate, DateTimeKind.Utc),
                     CreatedBy = tenantId,
                     CreatedAt = DateTime.UtcNow,
                     UpdatedAt = DateTime.UtcNow,
@@ -179,6 +211,24 @@ namespace TenantPortal.Transactions.Services
                 return true;
             } catch (Exception)
             {
+                return false;
+            }
+        }
+
+        private async Task<bool> CheckAdminCanReceivePaymentsAsync(Guid adminId)
+        {
+            try
+            {
+                var authUrl = _configuration["Auth:HttpUrl"] ?? "http://localhost:5001";
+                var response = await _httpClientFactory.CreateClient()
+                    .GetAsync($"{authUrl}/api/auth/internal/admin-billing-status/{adminId}");
+                if (!response.IsSuccessStatusCode) return false;
+                var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+                return body.GetProperty("canReceivePayments").GetBoolean();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to fetch billing status for admin {AdminId}.", adminId);
                 return false;
             }
         }
@@ -212,12 +262,12 @@ namespace TenantPortal.Transactions.Services
                 // 6 confirmed payments Jan–Jun 2026 ($1,925 = $1,850 rent + $75 parking)
                 var payments = new[]
                 {
-                    (due: new DateTime(2026, 1,  1, 0,0,0, DateTimeKind.Utc), paid: new DateTime(2026, 1,  2, 0,0,0, DateTimeKind.Utc), method: PaymentMethod.Card),
-                    (due: new DateTime(2026, 2,  1, 0,0,0, DateTimeKind.Utc), paid: new DateTime(2026, 2,  1, 0,0,0, DateTimeKind.Utc), method: PaymentMethod.Card),
-                    (due: new DateTime(2026, 3,  1, 0,0,0, DateTimeKind.Utc), paid: new DateTime(2026, 3,  2, 0,0,0, DateTimeKind.Utc), method: PaymentMethod.Card),
-                    (due: new DateTime(2026, 4,  1, 0,0,0, DateTimeKind.Utc), paid: new DateTime(2026, 4,  5, 0,0,0, DateTimeKind.Utc), method: PaymentMethod.Card),
-                    (due: new DateTime(2026, 5,  1, 0,0,0, DateTimeKind.Utc), paid: new DateTime(2026, 5,  2, 0,0,0, DateTimeKind.Utc), method: PaymentMethod.Card),
-                    (due: new DateTime(2026, 6,  1, 0,0,0, DateTimeKind.Utc), paid: new DateTime(2026, 6,  2, 0,0,0, DateTimeKind.Utc), method: PaymentMethod.BankTransfer),
+                    (due: new DateTime(2026, 1,  1, 0,0,0, DateTimeKind.Utc), paid: new DateTime(2026, 1,  2, 0,0,0, DateTimeKind.Utc), method: PaymentMethod.Stripe),
+                    (due: new DateTime(2026, 2,  1, 0,0,0, DateTimeKind.Utc), paid: new DateTime(2026, 2,  1, 0,0,0, DateTimeKind.Utc), method: PaymentMethod.Stripe),
+                    (due: new DateTime(2026, 3,  1, 0,0,0, DateTimeKind.Utc), paid: new DateTime(2026, 3,  2, 0,0,0, DateTimeKind.Utc), method: PaymentMethod.Stripe),
+                    (due: new DateTime(2026, 4,  1, 0,0,0, DateTimeKind.Utc), paid: new DateTime(2026, 4,  5, 0,0,0, DateTimeKind.Utc), method: PaymentMethod.Stripe),
+                    (due: new DateTime(2026, 5,  1, 0,0,0, DateTimeKind.Utc), paid: new DateTime(2026, 5,  2, 0,0,0, DateTimeKind.Utc), method: PaymentMethod.Stripe),
+                    (due: new DateTime(2026, 6,  1, 0,0,0, DateTimeKind.Utc), paid: new DateTime(2026, 6,  2, 0,0,0, DateTimeKind.Utc), method: PaymentMethod.External),
                 };
 
                 foreach (var p in payments)
@@ -247,6 +297,33 @@ namespace TenantPortal.Transactions.Services
             {
                 return false;
             }
+        }
+
+        public async Task<UnitPropertyInfoDTO?> GetMyUnitInfoAsync(Guid tenantId)
+        {
+            var assignment = await _context.TenantUnitAssignments
+                .FirstOrDefaultAsync(a => a.TenantId == tenantId && a.EndDate == null);
+            if (assignment == null) return null;
+
+            var unit = await _context.Units.FirstOrDefaultAsync(u => u.Id == assignment.UnitId && !u.IsDeleted);
+            if (unit == null) return null;
+
+            var property = await _context.Properties.FirstOrDefaultAsync(p => p.Id == unit.PropertyId && !p.IsDeleted);
+            if (property == null) return null;
+
+            return new UnitPropertyInfoDTO
+            {
+                UnitId = unit.Id,
+                UnitNumber = unit.UnitNumber,
+                Bedrooms = unit.Bedrooms,
+                Bathrooms = unit.Bathrooms,
+                SquareFeet = unit.SquareFeet,
+                BillingMode = unit.BillingMode,
+                PropertyId = property.Id,
+                PropertyName = property.Name,
+                PropertyAddress = property.Address,
+                AdminId = property.AdminId,
+            };
         }
     }
 }

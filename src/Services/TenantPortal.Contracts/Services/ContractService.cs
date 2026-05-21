@@ -12,11 +12,11 @@ namespace TenantPortal.Contracts.Services
     public class ContractService : IContractService
     {
         private readonly ContractDbContext _context;
-        private readonly BlobServiceClient _blobClient;
+        private readonly BlobContainerClient _blobContainerClient;
         public ContractService(ContractDbContext context, BlobServiceClient blobClient)
         {
             _context = context;
-            _blobClient = blobClient;
+            _blobContainerClient = blobClient.GetBlobContainerClient("contracts");
         }
         public async Task<bool> DeleteContractAsync(Guid contractId, Guid userId, UserRole role)
         {
@@ -133,8 +133,14 @@ namespace TenantPortal.Contracts.Services
                     c.IsCurrent = false;
                     c.UpdatedAt = DateTime.UtcNow;
                 }
+                await _blobContainerClient.CreateIfNotExistsAsync();
+                await _blobContainerClient.GetBlobClient(contract.BlobStoragePath).UploadAsync(
+                    request.File.OpenReadStream(),
+                    new Azure.Storage.Blobs.Models.BlobUploadOptions
+                    {
+                        HttpHeaders = new Azure.Storage.Blobs.Models.BlobHttpHeaders { ContentType = "application/pdf" }
+                    });
                 await _context.Contracts.AddAsync(contract);
-                await _blobClient.GetBlobContainerClient("contracts").GetBlobClient(contract.BlobStoragePath).UploadAsync(request.File.OpenReadStream());
                 await _context.SaveChangesAsync();
                 return true;
             } catch (Exception)
@@ -165,9 +171,10 @@ namespace TenantPortal.Contracts.Services
                 using var pdfStream = assembly.GetManifestResourceStream(resourceName)!;
 
                 // Upload to blob storage
-                var container = _blobClient.GetBlobContainerClient("contracts");
-                await container.CreateIfNotExistsAsync();
-                await container.GetBlobClient(blobPath).UploadAsync(pdfStream, overwrite: true);
+                await _blobContainerClient.CreateIfNotExistsAsync();
+                var seedBlob = _blobContainerClient.GetBlobClient(blobPath);
+                await seedBlob.UploadAsync(pdfStream, overwrite: true);
+                await seedBlob.SetHttpHeadersAsync(new Azure.Storage.Blobs.Models.BlobHttpHeaders { ContentType = "application/pdf" });
 
                 await _context.Contracts.AddAsync(new Contract
                 {
@@ -191,33 +198,44 @@ namespace TenantPortal.Contracts.Services
             }
         }
 
-        private ContractResponseDTO MapToDTO(Contract contract) => new ContractResponseDTO
+        private ContractResponseDTO MapToDTO(Contract contract)
         {
-            Id = contract.Id,
-            TenantId = contract.TenantId,
-            FileName = contract.FileName,
-            IsCurrent = contract.IsCurrent,
-            UploadedAt = contract.UploadedAt,
-            // Listing URLs use a longer expiry (1 h) so the page remains usable without re-fetching.
-            // Actual download URLs (15 min) are issued by DownloadContractAsync.
-            DownloadUrl = GenerateSasUrl(contract.BlobStoragePath, DateTimeOffset.UtcNow.AddHours(1))
-        };
+            var expiresOn = DateTimeOffset.UtcNow.AddHours(1);
+            return new ContractResponseDTO
+            {
+                Id = contract.Id,
+                TenantId = contract.TenantId,
+                FileName = contract.FileName,
+                IsCurrent = contract.IsCurrent,
+                UploadedAt = contract.UploadedAt,
+                DownloadUrl = GenerateSasUrl(contract.BlobStoragePath, expiresOn),
+                PreviewUrl = GenerateSasUrl(contract.BlobStoragePath, expiresOn, inline: true),
+            };
+        }
 
         /// <summary>
         /// Generates a time-limited Azure Blob SAS read URL.
-        /// Falls back to an empty string when the BlobServiceClient lacks shared-key credentials
-        /// (e.g. managed identity without user-delegation key setup).
+        /// Pass <paramref name="inline"/> = true to add a content-disposition header so browsers
+        /// render the PDF in-page rather than prompting a download.
+        /// Falls back to an empty string when the BlobServiceClient lacks shared-key credentials.
         /// </summary>
-        private string GenerateSasUrl(string blobPath, DateTimeOffset expiresOn)
+        private string GenerateSasUrl(string blobPath, DateTimeOffset expiresOn, bool inline = false)
         {
             try
             {
-                var blobClient = _blobClient
-                    .GetBlobContainerClient("contracts")
-                    .GetBlobClient(blobPath);
-                return blobClient.GenerateSasUri(
-                    Azure.Storage.Sas.BlobSasPermissions.Read,
-                    expiresOn).ToString();
+                var blobClient = _blobContainerClient.GetBlobClient(blobPath);
+                if (!inline)
+                    return blobClient.GenerateSasUri(Azure.Storage.Sas.BlobSasPermissions.Read, expiresOn).ToString();
+
+                var builder = new Azure.Storage.Sas.BlobSasBuilder(Azure.Storage.Sas.BlobSasPermissions.Read, expiresOn)
+                {
+                    BlobContainerName = _blobContainerClient.Name,
+                    BlobName = blobPath,
+                    Resource = "b",
+                    ContentDisposition = "inline",
+                    ContentType = "application/pdf",
+                };
+                return blobClient.GenerateSasUri(builder).ToString();
             }
             catch
             {

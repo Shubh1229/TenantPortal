@@ -1,4 +1,7 @@
 ﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using System.Net.Http.Json;
+using System.Text.Json;
 using TenantPortal.Shared.Interfaces;
 using TenantPortal.Transactions.Data;
 using TenantPortal.Transactions.DTOs;
@@ -14,10 +17,22 @@ namespace TenantPortal.Transactions.Services
     {
         private readonly TransactionDbContext _context;
         private readonly ISecretsProvider _secretsProvider;
-        public StripeService(TransactionDbContext context, ISecretsProvider secretsProvider)
+        private readonly ILogger<StripeService> _logger;
+        private readonly IHttpClientFactory _httpClientFactory;
+        private readonly IConfiguration _configuration;
+
+        public StripeService(
+            TransactionDbContext context,
+            ISecretsProvider secretsProvider,
+            ILogger<StripeService> logger,
+            IHttpClientFactory httpClientFactory,
+            IConfiguration configuration)
         {
             _context = context;
             _secretsProvider = secretsProvider;
+            _logger = logger;
+            _httpClientFactory = httpClientFactory;
+            _configuration = configuration;
         }
         public async Task<string?> CreatePaymentIntentAsync(PaymentIntentRequestDTO request, Guid userId)
         {
@@ -26,6 +41,28 @@ namespace TenantPortal.Transactions.Services
                 var schedule = await _context.RentSchedules.FirstOrDefaultAsync(s => s.Id == request.RentScheduleId);
                 if (schedule == null)
                     return null;
+
+                // Resolve admin's Stripe connected account so funds transfer to their bank
+                var unit = await _context.Units.FirstOrDefaultAsync(u => u.Id == schedule.UnitId);
+                var property = unit != null
+                    ? await _context.Properties.FirstOrDefaultAsync(p => p.Id == unit.PropertyId)
+                    : null;
+
+                string? connectedAccountId = null;
+                if (property?.AdminId != null)
+                    connectedAccountId = await GetAdminConnectedAccountIdAsync(property.AdminId.Value);
+
+                if (connectedAccountId == null)
+                {
+                    _logger.LogWarning("Payment intent creation blocked — admin has not completed Stripe Connect onboarding. AdminId: {AdminId}", property?.AdminId);
+                    return null;
+                }
+
+                if (property?.AdminId != null && !await CheckAdminCanReceivePaymentsAsync(property.AdminId.Value))
+                {
+                    _logger.LogWarning("Payment intent creation blocked — admin {AdminId} has not added a payment method yet (trial period).", property.AdminId);
+                    return null;
+                }
 
                 var stripeKey = await _secretsProvider.GetSecretAsync(SecretKeys.StripeSecretKey);
                 StripeConfiguration.ApiKey = stripeKey;
@@ -39,6 +76,10 @@ namespace TenantPortal.Transactions.Services
                     PaymentMethodTypes = isAch
                         ? new List<string> { "us_bank_account" }
                         : new List<string> { "card" },
+                    TransferData = new PaymentIntentTransferDataOptions
+                    {
+                        Destination = connectedAccountId,
+                    },
                     Metadata = new Dictionary<string, string>
                     {
                         { "UserId", userId.ToString() },
@@ -63,11 +104,65 @@ namespace TenantPortal.Transactions.Services
                 }
 
                 var intent = await new PaymentIntentService().CreateAsync(options);
+
+                _context.Transactions.Add(new Transaction
+                {
+                    Id = Guid.NewGuid(),
+                    TenantId = userId,
+                    UnitId = schedule.UnitId,
+                    Type = TransactionType.Rent,
+                    Amount = request.Amount,
+                    Status = TransactionStatus.Pending,
+                    PaymentMethod = isAch ? TenantPortal.Shared.Enums.PaymentMethod.Ach : TenantPortal.Shared.Enums.PaymentMethod.Stripe,
+                    StripePaymentIntentId = intent.Id,
+                    CreatedBy = userId,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
+                });
+                await _context.SaveChangesAsync();
+
                 return intent.ClientSecret;
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                _logger.LogError(ex, "Failed to create PaymentIntent for user {UserId}.", userId);
                 return null;
+            }
+        }
+
+        private async Task<string?> GetAdminConnectedAccountIdAsync(Guid adminId)
+        {
+            try
+            {
+                var authUrl = _configuration["Auth:HttpUrl"] ?? "http://localhost:5001";
+                var client = _httpClientFactory.CreateClient();
+                var response = await client.GetAsync($"{authUrl}/api/auth/internal/connected-account/{adminId}");
+                if (!response.IsSuccessStatusCode) return null;
+                var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+                return body.GetProperty("connectedAccountId").GetString();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to fetch connected account ID for admin {AdminId}.", adminId);
+                return null;
+            }
+        }
+
+        private async Task<bool> CheckAdminCanReceivePaymentsAsync(Guid adminId)
+        {
+            try
+            {
+                var authUrl = _configuration["Auth:HttpUrl"] ?? "http://localhost:5001";
+                var response = await _httpClientFactory.CreateClient()
+                    .GetAsync($"{authUrl}/api/auth/internal/admin-billing-status/{adminId}");
+                if (!response.IsSuccessStatusCode) return false;
+                var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+                return body.GetProperty("canReceivePayments").GetBoolean();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to fetch billing status for admin {AdminId}.", adminId);
+                return false;
             }
         }
 
@@ -83,16 +178,87 @@ namespace TenantPortal.Transactions.Services
                     if (paymentIntent == null) return false;
                     var transaction = await _context.Transactions
                         .FirstOrDefaultAsync(t => t.StripePaymentIntentId == paymentIntent.Id);
-                    if (transaction == null) return false;
+                    if (transaction == null)
+                    {
+                        _logger.LogWarning("Received payment_intent.succeeded for unknown PaymentIntent {PaymentIntentId} — no matching transaction found.", paymentIntent.Id);
+                        return true;
+                    }
                     transaction.Status = TransactionStatus.Confirmed;
                     transaction.PaidDate = DateTime.UtcNow;
                     transaction.UpdatedAt = DateTime.UtcNow;
                     await _context.SaveChangesAsync();
+                    _logger.LogInformation("Transaction {TransactionId} confirmed via Stripe webhook for PaymentIntent {PaymentIntentId}.", transaction.Id, paymentIntent.Id);
+                }
+                else if (stripeEvent.Type == "payment_intent.payment_failed")
+                {
+                    var paymentIntent = stripeEvent.Data.Object as PaymentIntent;
+                    if (paymentIntent == null) return false;
+                    var transaction = await _context.Transactions
+                        .FirstOrDefaultAsync(t => t.StripePaymentIntentId == paymentIntent.Id);
+                    if (transaction == null)
+                    {
+                        _logger.LogWarning("Received payment_intent.payment_failed for unknown PaymentIntent {PaymentIntentId}.", paymentIntent.Id);
+                        return true;
+                    }
+                    transaction.Status = TransactionStatus.Declined;
+                    transaction.UpdatedAt = DateTime.UtcNow;
+                    await _context.SaveChangesAsync();
+                    _logger.LogWarning("Transaction {TransactionId} declined — PaymentIntent {PaymentIntentId} failed. Tenant: {TenantId}.", transaction.Id, paymentIntent.Id, transaction.TenantId);
+
+                    // Look up which admin owns this unit's property, then notify them
+                    var unit = await _context.Units.FirstOrDefaultAsync(u => u.Id == transaction.UnitId);
+                    var property = unit != null ? await _context.Properties.FirstOrDefaultAsync(p => p.Id == unit.PropertyId) : null;
+                    if (property?.AdminId != null)
+                        _ = NotifyAdminPaymentFailedAsync(property.AdminId.Value, unit!.UnitNumber, transaction.Amount);
+                }
+                else if (stripeEvent.Type == "payment_intent.canceled")
+                {
+                    var paymentIntent = stripeEvent.Data.Object as PaymentIntent;
+                    if (paymentIntent == null) return false;
+                    var transaction = await _context.Transactions
+                        .FirstOrDefaultAsync(t => t.StripePaymentIntentId == paymentIntent.Id);
+                    if (transaction == null)
+                    {
+                        _logger.LogWarning("Received payment_intent.canceled for unknown PaymentIntent {PaymentIntentId}.", paymentIntent.Id);
+                        return true;
+                    }
+                    transaction.Status = TransactionStatus.Declined;
+                    transaction.UpdatedAt = DateTime.UtcNow;
+                    await _context.SaveChangesAsync();
+                    _logger.LogInformation("Transaction {TransactionId} declined — PaymentIntent {PaymentIntentId} was canceled.", transaction.Id, paymentIntent.Id);
                 }
                 return true;
-            } catch (Exception)
+            }
+            catch (StripeException ex)
             {
+                _logger.LogError(ex, "Stripe webhook signature validation failed.");
                 return false;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Unhandled error processing Stripe webhook.");
+                return false;
+            }
+        }
+
+        private async Task NotifyAdminPaymentFailedAsync(Guid adminId, string unitNumber, decimal amount)
+        {
+            try
+            {
+                var notificationsUrl = _configuration["Notifications:HttpUrl"] ?? "http://localhost:5004";
+                var client = _httpClientFactory.CreateClient();
+                await client.PostAsJsonAsync(
+                    $"{notificationsUrl}/api/notifications/internal/in-app",
+                    new
+                    {
+                        UserId = adminId,
+                        Type = "PaymentDeclined",
+                        Message = $"A Stripe payment for Unit {unitNumber} failed and could not be charged (${amount:F2}). The transaction has been marked as declined."
+                    });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to send admin payment-failure in-app notification.");
             }
         }
     }
