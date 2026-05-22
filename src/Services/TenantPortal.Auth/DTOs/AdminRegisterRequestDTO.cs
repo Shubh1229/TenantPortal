@@ -17,5 +17,17 @@ namespace TenantPortal.Auth.DTOs
         /// Used to construct the Stripe Checkout success and cancel redirect URLs.
         /// </summary>
         public required string ReturnBaseUrl { get; set; }
+
+        /// <summary>
+        /// Plan selected by the user: <c>"Starter"</c> (5 tenants), <c>"Standard"</c> (10 tenants),
+        /// or <c>"Unlimited"</c>. Defaults to <c>"Standard"</c>.
+        /// </summary>
+        public string Plan { get; set; } = "Standard";
+
+        /// <summary>
+        /// Billing period selected by the user. Either <c>"Monthly"</c> or <c>"Yearly"</c>.
+        /// Defaults to <c>"Monthly"</c> if not specified.
+        /// </summary>
+        public string BillingPeriod { get; set; } = "Monthly";
     }
 }

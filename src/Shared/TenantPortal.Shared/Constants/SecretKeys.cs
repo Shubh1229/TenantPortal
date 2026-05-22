@@ -19,8 +19,23 @@ namespace TenantPortal.Shared.Constants
         /// <summary>Azure Communication Services connection string used to send transactional emails.</summary>
         public const string AzureCommunicationServices = "AzureCommunicationServices__ConnectionString";
 
-        /// <summary>Stripe Price ID for the $20/month SaaS plan used to create Checkout Sessions.</summary>
-        public const string StripePriceId = "Stripe__PriceId";
+        /// <summary>Stripe Price ID for the Starter plan — $20/month (5 tenants).</summary>
+        public const string StripePriceIdStarterMonthly = "Stripe__PriceIdStarterMonthly";
+
+        /// <summary>Stripe Price ID for the Starter plan — $200/year (5 tenants).</summary>
+        public const string StripePriceIdStarterYearly = "Stripe__PriceIdStarterYearly";
+
+        /// <summary>Stripe Price ID for the Standard plan — $30/month (10 tenants).</summary>
+        public const string StripePriceIdStandardMonthly = "Stripe__PriceIdStandardMonthly";
+
+        /// <summary>Stripe Price ID for the Standard plan — $300/year (10 tenants).</summary>
+        public const string StripePriceIdStandardYearly = "Stripe__PriceIdStandardYearly";
+
+        /// <summary>Stripe Price ID for the Unlimited plan — $50/month (unlimited tenants).</summary>
+        public const string StripePriceIdUnlimitedMonthly = "Stripe__PriceIdUnlimitedMonthly";
+
+        /// <summary>Stripe Price ID for the Unlimited plan — $500/year (unlimited tenants).</summary>
+        public const string StripePriceIdUnlimitedYearly = "Stripe__PriceIdUnlimitedYearly";
 
         /// <summary>
         /// Stripe webhook signing secret for the subscription webhook endpoint.

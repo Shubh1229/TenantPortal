@@ -59,6 +59,7 @@ namespace TenantPortal.Auth.Services
                 await RunTest("gRPC: Notifications Channel",    "Connectivity", TestGrpcPingAsync),
                 await RunTest("Stripe: Secret Key",             "Stripe",       TestStripeSecretKeyAsync),
                 await RunTest("Stripe: Webhook Secret Formats", "Stripe",       TestStripeWebhookSecretsAsync),
+                await RunTest("Stripe: Price IDs",              "Stripe",       TestStripePriceIdsAsync),
             };
 
             var result = new TestSuiteResult
@@ -356,6 +357,43 @@ namespace TenantPortal.Auth.Services
             }
             return (allPassed,
                 allPassed ? "All 3 webhook secrets present and correctly formatted" : "One or more webhook secrets missing or malformed",
+                logs);
+        }
+
+        private async Task<(bool, string, List<string>)> TestStripePriceIdsAsync()
+        {
+            var logs = new List<string>();
+            var checks = new[]
+            {
+                ("Starter monthly",   SecretKeys.StripePriceIdStarterMonthly),
+                ("Starter yearly",    SecretKeys.StripePriceIdStarterYearly),
+                ("Standard monthly",  SecretKeys.StripePriceIdStandardMonthly),
+                ("Standard yearly",   SecretKeys.StripePriceIdStandardYearly),
+                ("Unlimited monthly", SecretKeys.StripePriceIdUnlimitedMonthly),
+                ("Unlimited yearly",  SecretKeys.StripePriceIdUnlimitedYearly),
+            };
+
+            var allPassed = true;
+            foreach (var (label, keyName) in checks)
+            {
+                var id = await _secrets.GetSecretAsync(keyName);
+                if (string.IsNullOrWhiteSpace(id))
+                {
+                    logs.Add($"  FAIL  {label}: missing from Key Vault");
+                    allPassed = false;
+                }
+                else if (!id.StartsWith("price_"))
+                {
+                    logs.Add($"  FAIL  {label}: present but unexpected format ('{id[..Math.Min(12, id.Length)]}...')");
+                    allPassed = false;
+                }
+                else
+                {
+                    logs.Add($"  PASS  {label}: {id[..Math.Min(16, id.Length)]}... ({id.Length} chars)");
+                }
+            }
+            return (allPassed,
+                allPassed ? "All 6 plan price IDs present and correctly formatted" : "One or more plan price IDs missing or malformed",
                 logs);
         }
 

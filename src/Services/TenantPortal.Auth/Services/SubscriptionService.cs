@@ -15,20 +15,23 @@ namespace TenantPortal.Auth.Services
     {
         private readonly AuthDbContext _context;
         private readonly ITotpService _totpService;
+        private readonly ITotpEncryptionService _totpEncryption;
         private readonly ISecretsProvider _secretsProvider;
         private readonly IHttpClientFactory _httpClientFactory;
         private readonly IConfiguration _configuration;
         private readonly ILogger<SubscriptionService> _logger;
 
-        /// <summary>
-        /// Number of active tenants included in the base $20/month plan.
-        /// Increase when higher-tier pricing is added.
-        /// </summary>
-        private const int BasePlanMaxTenants = 10;
+        private static int? PlanMaxTenants(string plan) => plan switch
+        {
+            "Starter"   => 5,
+            "Unlimited" => null,
+            _           => 10   // Standard
+        };
 
         public SubscriptionService(
             AuthDbContext context,
             ITotpService totpService,
+            ITotpEncryptionService totpEncryption,
             ISecretsProvider secretsProvider,
             IHttpClientFactory httpClientFactory,
             IConfiguration configuration,
@@ -36,6 +39,7 @@ namespace TenantPortal.Auth.Services
         {
             _context = context;
             _totpService = totpService;
+            _totpEncryption = totpEncryption;
             _secretsProvider = secretsProvider;
             _httpClientFactory = httpClientFactory;
             _configuration = configuration;
@@ -72,13 +76,13 @@ namespace TenantPortal.Auth.Services
                 Id = userId,
                 Email = request.Email,
                 PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password),
-                TotpSecret = totpSecret,
+                TotpSecret = _totpEncryption.Encrypt(totpSecret),
                 Role = UserRole.Admin,
                 IsActive = false,           // activated by customer.subscription.created webhook
                 IsDeleted = false,
                 StripeCustomerId = customer.Id,
                 SubscriptionStatus = SubscriptionStatus.None,
-                MaxTenants = BasePlanMaxTenants,
+                MaxTenants = PlanMaxTenants(request.Plan),
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
             };
@@ -88,7 +92,17 @@ namespace TenantPortal.Auth.Services
             // Build a Checkout Session for the subscription plan.
             // success_url includes {CHECKOUT_SESSION_ID} so the frontend can display a
             // "payment confirmed" message while it waits for the webhook to activate the account.
-            var priceId = await _secretsProvider.GetSecretAsync(SecretKeys.StripePriceId);
+            var isYearly = string.Equals(request.BillingPeriod, "Yearly", StringComparison.OrdinalIgnoreCase);
+            var priceKey = (request.Plan, isYearly) switch
+            {
+                ("Starter",   true)  => SecretKeys.StripePriceIdStarterYearly,
+                ("Starter",   false) => SecretKeys.StripePriceIdStarterMonthly,
+                ("Unlimited", true)  => SecretKeys.StripePriceIdUnlimitedYearly,
+                ("Unlimited", false) => SecretKeys.StripePriceIdUnlimitedMonthly,
+                (_,           true)  => SecretKeys.StripePriceIdStandardYearly,
+                _                    => SecretKeys.StripePriceIdStandardMonthly,
+            };
+            var priceId = await _secretsProvider.GetSecretAsync(priceKey);
             var session = await new Stripe.Checkout.SessionService().CreateAsync(new Stripe.Checkout.SessionCreateOptions
             {
                 Customer = customer.Id,
@@ -198,6 +212,11 @@ namespace TenantPortal.Auth.Services
                         await HandleSubscriptionDeletedAsync(stripeEvent.Data.Object as Stripe.Subscription);
                         break;
 
+                    // Subscription paused — suspend access until resumed
+                    case "customer.subscription.paused":
+                        await HandleSubscriptionPausedAsync(stripeEvent.Data.Object as Stripe.Subscription);
+                        break;
+
                     // Payment failed — suspend immediately; Stripe will retry automatically
                     case "invoice.payment_failed":
                         await HandlePaymentFailedAsync(stripeEvent.Data.Object as Stripe.Invoice);
@@ -227,6 +246,34 @@ namespace TenantPortal.Auth.Services
                 // Signature mismatch or malformed event — return false so the controller returns 400
                 return false;
             }
+        }
+
+        /// <inheritdoc/>
+        public async Task<bool> TryActivateFromStripeAsync(Guid userId)
+        {
+            var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == userId && !u.IsDeleted);
+            if (user?.StripeCustomerId == null) return false;
+
+            await ConfigureStripeAsync();
+
+            var subscriptions = await new Stripe.SubscriptionService().ListAsync(new Stripe.SubscriptionListOptions
+            {
+                Customer = user.StripeCustomerId,
+                Limit = 1
+            });
+
+            var subscription = subscriptions.FirstOrDefault();
+            if (subscription == null || subscription.Status is not ("active" or "trialing"))
+                return false;
+
+            user.StripeSubscriptionId = subscription.Id;
+            user.SubscriptionStatus = MapStripeStatus(subscription.Status);
+            user.IsActive = true;
+            user.UpdatedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation("Activated admin {UserId} via live Stripe subscription check (missed webhook recovery).", userId);
+            return true;
         }
 
         // ── Private Webhook Handlers ─────────────────────────────────────────────
@@ -261,6 +308,23 @@ namespace TenantPortal.Auth.Services
             if (user == null) return;
 
             user.SubscriptionStatus = SubscriptionStatus.Canceled;
+            user.IsActive = false;
+            user.UpdatedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+        }
+
+        /// <summary>
+        /// Suspends the account when the subscription is paused. Access is restored
+        /// automatically when Stripe fires <c>customer.subscription.updated</c> on resume.
+        /// </summary>
+        private async Task HandleSubscriptionPausedAsync(Stripe.Subscription? subscription)
+        {
+            if (subscription == null) return;
+            var user = await _context.Users.FirstOrDefaultAsync(u =>
+                u.StripeCustomerId == subscription.CustomerId && !u.IsDeleted);
+            if (user == null) return;
+
+            user.SubscriptionStatus = MapStripeStatus(subscription.Status);
             user.IsActive = false;
             user.UpdatedAt = DateTime.UtcNow;
             await _context.SaveChangesAsync();

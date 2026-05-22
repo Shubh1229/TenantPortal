@@ -33,10 +33,16 @@ export const authApi = {
             body: { email, role },
         }),
 
-    registerAdmin: (email: string, password: string, returnBaseUrl: string) =>
+    registerAdmin: (
+        email: string,
+        password: string,
+        returnBaseUrl: string,
+        plan: 'Starter' | 'Standard' | 'Unlimited',
+        billingPeriod: 'Monthly' | 'Yearly'
+    ) =>
         apiRequest<AdminRegisterResponse>('/api/auth/register/admin', {
             method: 'POST',
-            body: { email, password, returnBaseUrl },
+            body: { email, password, returnBaseUrl, plan, billingPeriod },
             requiresAuth: false,
         }),
 

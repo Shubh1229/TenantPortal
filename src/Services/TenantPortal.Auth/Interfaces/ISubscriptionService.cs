@@ -45,5 +45,14 @@ namespace TenantPortal.Auth.Interfaces
         /// <param name="stripeSignature">Value of the <c>Stripe-Signature</c> header.</param>
         /// <returns><c>true</c> if the event was valid and processed; <c>false</c> on signature mismatch or unexpected error.</returns>
         Task<bool> HandleSubscriptionWebhookAsync(string requestBody, string stripeSignature);
+
+        /// <summary>
+        /// Checks Stripe live for the user's subscription status and activates the account
+        /// if the subscription is active or trialing. Used to recover from missed webhooks
+        /// (e.g. dev environment without Stripe CLI forwarding).
+        /// </summary>
+        /// <param name="userId">The user ID to check and potentially activate.</param>
+        /// <returns><c>true</c> if the account was found and activated; <c>false</c> otherwise.</returns>
+        Task<bool> TryActivateFromStripeAsync(Guid userId);
     }
 }

@@ -49,6 +49,10 @@ export default function SubscriptionPage() {
         }
     }
 
+    const planLabel = status
+        ? status.maxTenants == null ? 'Unlimited' : status.maxTenants <= 5 ? 'Starter' : 'Standard'
+        : null;
+
     const daysLeft = status?.trialEnd
         ? Math.ceil((new Date(status.trialEnd).getTime() - Date.now()) / 86_400_000)
         : null;
@@ -114,7 +118,13 @@ export default function SubscriptionPage() {
 
                         <div className="flex items-center justify-between text-sm">
                             <span className="text-zinc-400">Plan</span>
-                            <span className="text-zinc-200">$20 / month</span>
+                            <span className="text-zinc-200">{planLabel ?? '—'}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-sm">
+                            <span className="text-zinc-400">Tenants included</span>
+                            <span className="text-zinc-200">
+                                {status.maxTenants == null ? 'Unlimited' : status.maxTenants}
+                            </span>
                         </div>
                     </div>
 

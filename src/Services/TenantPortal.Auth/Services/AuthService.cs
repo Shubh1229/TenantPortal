@@ -24,6 +24,7 @@ namespace TenantPortal.Auth.Services
         private readonly INotificationsGrpcClient _notificationsGrpc;
         private readonly IConfiguration _configuration;
         private readonly IHttpClientFactory _httpClientFactory;
+        private readonly ISubscriptionService _subscriptionService;
 
         // Holds temp tokens issued after password validation, pending TOTP verification.
         // Static + ConcurrentDictionary so multiple concurrent login attempts don't race.
@@ -38,7 +39,8 @@ namespace TenantPortal.Auth.Services
             ISecretsProvider secretsProvider,
             INotificationsGrpcClient notificationsGrpc,
             IConfiguration configuration,
-            IHttpClientFactory httpClientFactory)
+            IHttpClientFactory httpClientFactory,
+            ISubscriptionService subscriptionService)
         {
             _jwtService = jwtService;
             _totpService = totpService;
@@ -48,6 +50,7 @@ namespace TenantPortal.Auth.Services
             _notificationsGrpc = notificationsGrpc;
             _configuration = configuration;
             _httpClientFactory = httpClientFactory;
+            _subscriptionService = subscriptionService;
         }
 
         /// <inheritdoc/>
@@ -56,6 +59,18 @@ namespace TenantPortal.Auth.Services
             email = email.Trim().ToLowerInvariant();
             var user = await _context.Users
                 .FirstOrDefaultAsync(u => u.Email == email && u.IsActive && !u.IsDeleted);
+
+            // If no active user found, check whether this is an admin whose subscription
+            // webhook was missed (e.g. dev mode without Stripe CLI). Do a live Stripe
+            // lookup and activate if the subscription is active or trialing.
+            if (user == null)
+            {
+                var inactiveUser = await _context.Users
+                    .FirstOrDefaultAsync(u => u.Email == email && !u.IsActive && !u.IsDeleted
+                                           && u.StripeCustomerId != null);
+                if (inactiveUser != null && await _subscriptionService.TryActivateFromStripeAsync(inactiveUser.Id))
+                    user = inactiveUser;
+            }
 
             if (user == null || !BCrypt.Net.BCrypt.Verify(password, user.PasswordHash))
                 return null;
